@@ -38,6 +38,7 @@ from .const import (
     WAVE3_NUMBERS,
     EcoFlowNumberDef,
     filter_defs_for_serial,
+    supports_powerpulse_controls,
     supports_stream_ac5000_controls,
     supports_stream_controls,
 )
@@ -98,6 +99,11 @@ async def async_setup_entry(
             )
             continue
         coordinator = source
+        if (
+            coordinator.device_type == DEVICE_TYPE_POWERPULSE2
+            and not supports_powerpulse_controls(coordinator.device_sn)
+        ):
+            continue
         defs = filter_defs_for_serial(
             _get_number_defs(coordinator.device_type, coordinator.device_sn),
             coordinator.device_sn,

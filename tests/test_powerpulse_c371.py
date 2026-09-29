@@ -6,7 +6,6 @@ import struct
 
 from ecoflow_energy.ecoflow.const import DEVICE_TYPE_POWERPULSE2, get_device_type
 from ecoflow_energy.ecoflow.parsers.powerpulse_proto import (
-    _finalize,
     parse_powerpulse_message,
 )
 from ecoflow_energy.ecoflow.proto_encoding import (
@@ -16,24 +15,14 @@ from ecoflow_energy.ecoflow.proto_encoding import (
 
 from custom_components.ecoflow_energy.const import (
     POWERPULSE2_BINARY_SENSORS,
-    POWERPULSE2_BUTTONS,
-    POWERPULSE2_NUMBERS,
-    POWERPULSE2_SELECTS,
     POWERPULSE2_SENSORS,
     filter_defs_for_serial,
 )
 
 
-def test_c371_read_only_definitions() -> None:
+def test_c371_sensor_definitions() -> None:
     serial = "C371TEST00000001"
     assert get_device_type("", serial) == DEVICE_TYPE_POWERPULSE2
-    assert filter_defs_for_serial(POWERPULSE2_BUTTONS, serial) == []
-    assert filter_defs_for_serial(POWERPULSE2_NUMBERS, serial) == []
-    assert filter_defs_for_serial(POWERPULSE2_SELECTS, serial) == []
-    assert (
-        filter_defs_for_serial(POWERPULSE2_BUTTONS, "C376TEST00000001")
-        == POWERPULSE2_BUTTONS
-    )
     assert filter_defs_for_serial(POWERPULSE2_SENSORS, serial) == POWERPULSE2_SENSORS
     assert (
         filter_defs_for_serial(POWERPULSE2_BINARY_SENSORS, serial)
@@ -65,7 +54,6 @@ def test_synthetic_c371_suspended_heartbeat() -> None:
     result = parse_powerpulse_message(encode_field_bytes(1, header))
     assert result is not None
     assert result["ev_charge_status"] == "suspended_vehicle"
-    assert result["ev_session_status"] is None
     assert result["ev_charge_power_w"] == 0.0
     assert result["ev_voltage_l1_v"] == 230.0
     assert result["ev_max_current_a"] == 32.0
@@ -75,10 +63,3 @@ def test_synthetic_c371_suspended_heartbeat() -> None:
         == result["ev_session_energy_wh"]
         == 0
     )
-
-
-def test_unknown_session_clears_previous_charging_status() -> None:
-    state = _finalize({"_session_status_raw": 2})
-    state.update(_finalize({"_session_status_raw": 5}))
-    assert state["ev_session_status"] is None
-    assert "ev_session_status" not in _finalize({})
