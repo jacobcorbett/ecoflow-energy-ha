@@ -54,6 +54,7 @@
 | **Solar Tracker** | `HZ31` `S02F` | Enhanced only | 6 | none, read-only for now | none | ~3 s |
 | **WAVE 3** | `AC71` | Enhanced only | 18 + 5 binary | 4 switches · 5 numbers · 5 selects · 1 climate | 1 | ~2 s / 120 s |
 | **PowerPulse 2** | `C376` `C374` | Enhanced only | 18 + 1 binary | 2 buttons · 1 number with no PowerOcean, plus 3 numbers · 2 selects · 1 switch with exactly one PowerOcean in the entry | 1 | on change, refreshed after 20 min |
+| **PowerPulse 2 - not yet verified** | `C371` | Enhanced validation pending; Standard unverified | Read-only heartbeat support; charging validation pending | none | not yet verified | continuous updates not yet verified |
 | **Ocean 2** | `RE11` `RE17` `RE41` `RE42` | Enhanced only | 48 + 12 per module | none, read-only | 6 | ~3 s |
 | **OCEAN Smart Electrical Panel 40** | `HR61` | Enhanced only | 19 + 3 per circuit, 1 binary per circuit | none, read-only | - | ~3 s |
 | **DELTA Pro Ultra** | `Y711` | Enhanced only | 21 + 2 per battery pack | none, read-only | - | ~60 s when idle |
@@ -90,6 +91,11 @@
 > **Local connection for a three-phase PowerOcean.** If EcoFlow support has enabled Modbus on your inverter, a third connection type reads it directly over your network with no account and no cloud. It refreshes every 2 seconds and shows the main readings, not everything the account connection does. You can set Backup Reserve and the indicator brightness from Home Assistant. A Modbus Control switch takes control of the inverter over Modbus and is always off after a restart. While it is on, the EcoFlow app is locked. See [Connecting a PowerOcean locally over Modbus](documentation/guides/powerocean-local-modbus.md). Thanks to [@jensfr1](https://github.com/jensfr1), who already helped with the Ocean 2 support. For this local connection he showed how EcoFlow enables Modbus on the inverter and made the Modbus protocol description available.
 
 **PowerOcean Plus** (`R371`, `R372`, `R374`, `HJ3C`) are the higher-power 3-phase hybrid units. They use the same entity set as a standard PowerOcean and are supported in Enhanced Mode. Beyond a standard unit they report per-phase **reactive power** (var) and **apparent power** (VA), and drive **MPPT strings 3 and 4**. These entities ship disabled by default so that standard units are not left with permanently empty sensors, so enable the ones you need after adding a Plus device. Field coverage is based on diagnostics from live Plus hardware; if your unit reports a value that no entity picks up, the raw data is available via **Download Diagnostics**.
+
+**PowerPulse C371: not yet verified.** Read-only recognition and a suspended
+heartbeat are implemented; continuous updates and charging power/energy still
+need app verification. The controls and Standard Mode claims below apply to
+C376/C374 only.
 
 **Accessories.** Three add-ons work alongside a PowerOcean. The PowerPulse 2 is a device of its own. The other two report through the PowerOcean itself, so their entities sit on the PowerOcean device page and are created only once the accessory actually reports:
 
@@ -202,7 +208,7 @@ Already running a different EcoFlow integration? It can stay installed while you
 |:---|:---|:---|
 | **Connection** | EcoFlow cloud (HTTPS polling + MQTT) | EcoFlow cloud (WSS MQTT) |
 | **Credentials** | Access Key + Secret Key ([Developer Portal](https://developer.ecoflow.com)) | EcoFlow email + password (same as mobile app) |
-| **Devices** | All except the Enhanced-only serials (`J327`, `J32D`, `J32E`, `R371`, `R372`, `R374`, `HJ3C`, `BK01`, `BK21`, `ES21`, `ES22`, `HZ31`, `S02F`, `AC71`, `C374`, `C376`, `RE11`, `RE17`, `RE41`, `RE42`, `HR61`, `Y711`, `HD31`, `R655`) | All supported devices |
+| **Devices** | All except the Enhanced-only serials (`J327`, `J32D`, `J32E`, `R371`, `R372`, `R374`, `HJ3C`, `BK01`, `BK21`, `ES21`, `ES22`, `HZ31`, `S02F`, `AC71`, `C374`, `C376`, `RE11`, `RE17`, `RE41`, `RE42`, `HR61`, `Y711`, `HD31`, `R655`); `C371` Standard Mode is unverified | All supported devices; `C371` validation pending |
 | **Update rate** | ~30 s HTTP polling (+ MQTT push for Delta/Smart Plug) | ~2-4 s real-time via WSS MQTT |
 | **Delta 2 Max / Smart Plug controls** | All switches and numbers | All switches and numbers |
 | **Delta 3 controls** | Switches and most numbers; the screen and idle shutdowns and the AC charge power need Enhanced Mode | All switches, numbers and selects |
