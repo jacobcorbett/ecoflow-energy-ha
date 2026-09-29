@@ -235,10 +235,15 @@ def test_heartbeat_and_param_report_agree_on_the_key() -> None:
 
 
 def test_unmapped_enum_numbers_drop_the_key_instead_of_writing_none() -> None:
-    """Unknown enums never reach HA; session codes explicitly clear stale state."""
+    """An unrecognised enum number must drop its key, not publish `None`.
+
+    The sibling PowerOcean parser drops the same shape for the same key
+    (`ev_charge_status`) because an unmapped value would crash the enum
+    sensor with "not in list of options"; the same reasoning applies to
+    all three enum fields this parser resolves.
+    """
     assert "ev_charge_status" not in _finalize({"_plug_status_raw": 99})
-    # Unknown session codes explicitly clear a previous charging state.
-    assert _finalize({"_session_status_raw": 99})["ev_session_status"] is None
+    assert "ev_session_status" not in _finalize({"_session_status_raw": 99})
     assert "ev_phase_mode" not in _finalize({"_phase_mode_raw": 99})
 
 
