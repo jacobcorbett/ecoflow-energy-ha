@@ -9,8 +9,7 @@ For installation and quick-start, see the main [README](../README.md).
 Complete list of all sensors, switches, numbers, and binary sensors per device:
 
 PowerPulse C371 is not yet verified; its read-only heartbeat support still needs
-continuous-update and charging power/energy validation. Counts and capabilities
-below apply to C376/C374 only.
+continuous-update and charging power/energy validation.
 
 - [PowerOcean](entities/powerocean.md) - 241 sensors, 13 binary sensors, 10 numbers, 8 switches, 1 select (`HJ31`, `HJ32`, `HJ35`, `HJ36`, `HJ37`, `J32B`, `J327`, `J329`, `J32D`, `J32E`, and the Plus variants `R371`, `R372`, `R374`, `HJ3C`)
 - [Delta 2 Max](entities/delta-2-max.md) - 94 sensors, 4 binary sensors, 7 switches, 8 numbers (`R351`, `R331`)
