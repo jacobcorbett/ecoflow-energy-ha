@@ -31,8 +31,8 @@ _CHG_DSG_STATE_MAP: dict[int, str] = {
 }
 
 _GRID_STATUS_MAP: dict[int, str] = {
-    0: "on_grid",
-    1: "off_grid",
+    0: "ok",
+    1: "not_detected",
 }
 
 _PCS_RUN_STATE_MAP: dict[str, str] = {

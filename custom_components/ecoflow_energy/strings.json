@@ -479,8 +479,8 @@
       "grid_status": {
         "name": "Grid Status",
         "state": {
-          "on_grid": "On-grid",
-          "off_grid": "Off-grid"
+          "not_detected": "Off-grid",
+          "ok": "On-grid"
         }
       },
       "pcs_power_factor": {

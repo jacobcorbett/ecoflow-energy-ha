@@ -729,15 +729,15 @@ class TestEMSState:
         result = parse_powerocean_http_quota(data)
         assert result["pcs_run_state"] == "running"
 
-    def test_grid_status_on_grid(self):
+    def test_grid_status_code_zero_reads_ok(self):
         data = {"ems_change_report.sysGridSta": 0}
         result = parse_powerocean_http_quota(data)
-        assert result["grid_status"] == "on_grid"
+        assert result["grid_status"] == "ok"
 
-    def test_grid_status_off_grid(self):
+    def test_grid_status_code_one_reads_not_detected(self):
         data = {"ems_change_report.sysGridSta": 1}
         result = parse_powerocean_http_quota(data)
-        assert result["grid_status"] == "off_grid"
+        assert result["grid_status"] == "not_detected"
 
     def test_power_factor(self):
         data = {"ems_change_report.pcsPfValue": 0.98}

@@ -63,18 +63,18 @@ _WIFI_ETH_KEYS: frozenset[str] = frozenset({"wifi_status", "ethernet_status"})
 def _apply_enum_mappings(result: dict[str, Any]) -> None:
     """Apply all enum and connectivity mappings to sensor-keyed result in place.
 
-    Unknown integer values (e.g. firmware adding new states) are dropped
-    rather than passed through, because HA's enum sensors raise
+    Unknown integer values (e.g. firmware adding new states) are never
+    passed through, because HA's enum sensors raise
     ``ValueError: state value 'N' not in options`` for any value not in
-    the declared options list.
+    the declared options list. Most enums drop the key; ``grid_status`` is
+    set to ``None`` so that an unknown code clears the previous state.
     """
     if "grid_status" in result:
         raw_grid = result["grid_status"]
+        # The value arrives as a float here, so a bool cannot reach this check.
         result["grid_status"] = (
             _GRID_STATUS_MAP.get(int(raw_grid))
-            if isinstance(raw_grid, (int, float))
-            and not isinstance(raw_grid, bool)
-            and raw_grid in (0, 1)
+            if isinstance(raw_grid, (int, float)) and raw_grid in (0, 1)
             else None
         )
     for sensor_key, mapping in _PROTO_ENUM_INT.items():

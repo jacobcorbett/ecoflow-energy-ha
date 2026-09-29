@@ -4118,7 +4118,7 @@ class TestBpRemapping:
 
         assert result["bp_online_sum"] == 2.0
         assert result["ems_feed_mode"] == "no_limit"
-        assert result["grid_status"] == "on_grid"
+        assert result["grid_status"] == "ok"
 
     async def test_ems_change_no_false_defaults(
         self,
@@ -4162,7 +4162,7 @@ class TestBpRemapping:
         }
         result = remap_bp_keys(raw, coordinator._bp_sn_to_index, coordinator.device_sn)
 
-        assert result["grid_status"] == "off_grid"
+        assert result["grid_status"] == "not_detected"
         assert result["batt_charge_discharge_state"] == "discharging"
         assert result["ems_feed_mode"] == "off"
         assert result["ems_work_mode"] == "self_use"
@@ -4197,7 +4197,7 @@ class TestBpRemapping:
         result = remap_bp_keys(raw, coordinator._bp_sn_to_index, coordinator.device_sn)
         assert result["ems_work_state"] == "none"
 
-    async def test_grid_is_energized_overrides_sys_grid_sta(
+    async def test_energized_flag_does_not_override_explicit_off_grid(
         self,
         hass: HomeAssistant,
         enhanced_config_entry: MockConfigEntry,
@@ -4210,10 +4210,10 @@ class TestBpRemapping:
         # Backup can stay energized while EMS explicitly reports off-grid.
         raw = {"sys_grid_sta": 1, "grid_is_energized": True}
         result = remap_bp_keys(raw, coordinator._bp_sn_to_index, coordinator.device_sn)
-        assert result["grid_status"] == "off_grid"
+        assert result["grid_status"] == "not_detected"
         assert "grid_is_energized" not in result  # consumed, not passed through
 
-    async def test_grid_is_energized_false(
+    async def test_energized_flag_false_alone_sets_no_grid_status(
         self,
         hass: HomeAssistant,
         enhanced_config_entry: MockConfigEntry,
@@ -5836,7 +5836,7 @@ class TestParseMessageGetReply:
         assert result is not None
         assert result.get("soc_pct") == 85
         assert result.get("ems_feed_mode") == "limit"
-        assert result.get("grid_status") == "off_grid"
+        assert result.get("grid_status") == "not_detected"
         assert result.get("pcs_ac_freq_hz") == 50.01
 
     async def test_powerocean_get_reply_proto_parsed(
