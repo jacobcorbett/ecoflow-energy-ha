@@ -4055,7 +4055,7 @@ class TestHeartbeatExtraction:
         assert result["grid_phase_a_active_power_w"] == -2200.0
         assert result["grid_phase_b_voltage_v"] == 231.0
 
-    async def test_grid_status_derived_from_phase_voltage(
+    async def test_live_phase_voltage_does_not_establish_grid_status(
         self,
     ) -> None:
         """Live backup voltage must not establish grid connection."""
@@ -4063,7 +4063,7 @@ class TestHeartbeatExtraction:
         result = flatten_heartbeat(raw)
         assert "grid_status" not in result
 
-    async def test_grid_status_not_detected_low_voltage(
+    async def test_low_phase_voltage_does_not_establish_grid_status(
         self,
     ) -> None:
         """Low voltage alone must not establish grid connection."""

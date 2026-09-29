@@ -211,10 +211,10 @@ EMS_CHANGE_TO_SENSOR: dict[str, str] = {
 #
 # That is not hypothetical. In the R374 bundle the phase containers report
 # 237 V on all three phases and -3725 W of export while cmd 17 reports
-# `sys_grid_sta = 0` and `bp_chg_dsg_sta = 2` - "grid not detected" and
-# "discharging" on a grid-exporting unit whose battery power is zero. Under
-# the cmd-8 table those two values would land on `grid_status` and
-# `batt_charge_discharge_state` and be visibly wrong. The same reasoning
+# `sys_grid_sta = 0` and `bp_chg_dsg_sta = 2` - "on-grid" and "discharging"
+# on a grid-exporting unit whose battery power is zero. The battery state
+# contradicts the bundle; the matching grid state alone does not establish
+# the cmd-17 mapping for `grid_status`. The same reasoning
 # excludes `sys_work_sta`, `ems_work_state`, `bp_soc`, `bp_online_sum` and
 # the two lifetime energy counters (0 in every observed frame).
 #

@@ -4,13 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [1.23.0] - Unreleased
 
-### Fixed
+### Changed
 
 - PowerOcean Grid Status now uses the explicit EMS connection state:
   `0` is `on_grid`, `1` is `off_grid`. Backup-output voltage and the energized
   flag no longer override an outage. Unknown codes clear the previous status.
   Automations matching `ok` or `not_detected` must migrate to the new states;
-  existing history is not rewritten.
+  existing history is not rewritten. The meaning also changed: `0` previously
+  read `not_detected` and now reads `on_grid`, so historical `not_detected`
+  is not the new `off_grid`.
+  @jacobcorbett supplied the outage observation compared with the EcoFlow app
+  and the portal-code evidence for the mapping.
 
 ### Added
 

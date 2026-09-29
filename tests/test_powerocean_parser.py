@@ -729,12 +729,12 @@ class TestEMSState:
         result = parse_powerocean_http_quota(data)
         assert result["pcs_run_state"] == "running"
 
-    def test_grid_status_not_detected(self):
+    def test_grid_status_on_grid(self):
         data = {"ems_change_report.sysGridSta": 0}
         result = parse_powerocean_http_quota(data)
         assert result["grid_status"] == "on_grid"
 
-    def test_grid_status_ok(self):
+    def test_grid_status_off_grid(self):
         data = {"ems_change_report.sysGridSta": 1}
         result = parse_powerocean_http_quota(data)
         assert result["grid_status"] == "off_grid"
@@ -1335,7 +1335,7 @@ class TestGridStatusFallbackAllPhases:
         result = flatten_heartbeat(raw)
         assert "grid_status" not in result
 
-    def test_all_phases_low_not_detected(self):
+    def test_all_phases_low_does_not_establish_grid_status(self):
         from ecoflow_energy.ecoflow.parsers.powerocean_proto import (
             flatten_heartbeat,
         )

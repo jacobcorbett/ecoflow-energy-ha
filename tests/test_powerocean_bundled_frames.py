@@ -631,13 +631,15 @@ def test_cmd_17_reports_run_state_and_connectivity() -> None:
 
 
 def test_cmd_17_does_not_write_the_grid_and_battery_state_sensors() -> None:
-    """Its values for those contradict the rest of the same bundle.
+    """Its grid and battery fields do not have an established mapping.
 
     The phase containers in this bundle report 237 V on all three phases
     and -3725 W of export, while cmd_id=17 says `sys_grid_sta = 0` and
     `bp_chg_dsg_sta = 2`. Under the cmd_id=8 mapping that would publish
-    "grid not detected" and "discharging" for a grid-exporting unit whose
-    battery power is zero, so cmd_id=17 does not own these keys.
+    "on-grid" and "discharging" for a grid-exporting unit whose battery
+    power is zero. The battery state contradicts the bundle; the matching
+    grid state alone does not establish the cmd_id=17 mapping, so it does
+    not own these keys.
     """
     sensors = _ems_state_keys(_R374_GET_ALL_FIXTURE.read_bytes())
 
