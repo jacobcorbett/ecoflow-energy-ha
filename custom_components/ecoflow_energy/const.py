@@ -5663,6 +5663,14 @@ def filter_defs_for_serial[DefT: _HasKey](
     definitions read their value from ``state_key``, so both that and ``key``
     are matched against the exclusion set.
     """
+    if device_sn.upper().startswith("C371"):
+        # This variant has only been verified through read-only telemetry.
+        # Do not inherit the C374/C376 write paths merely by sharing a parser.
+        definitions = [
+            definition
+            for definition in definitions
+            if isinstance(definition, (EcoFlowSensorDef, EcoFlowBinarySensorDef))
+        ]
     excluded = excluded_keys_for_serial(device_sn)
     if not excluded:
         return list(definitions)

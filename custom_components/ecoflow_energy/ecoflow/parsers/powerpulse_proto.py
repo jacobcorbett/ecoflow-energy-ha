@@ -184,6 +184,8 @@ _PLUG_STATUS_NAMES: dict[int, str] = {
     # entry the sensor kept its previous state through such a frame.
     2: "preparing",
     3: "charging",
+    # Shared EV_CHG_STS_SUSPENDED_EV, observed on a C371 at zero power.
+    5: "suspended_vehicle",
     6: "finishing",
 }
 # Field 101 is a different number on the wire (0/2/3 where field 1 has
@@ -315,8 +317,9 @@ def _finalize(parsed: dict[str, Any]) -> dict[str, Any]:
     session_status_raw = result.pop("_session_status_raw", None)
     if isinstance(session_status_raw, int):
         session_status_name = _SESSION_STATUS_NAMES.get(session_status_raw)
-        if session_status_name is not None:  # same reasoning as above
-            result["ev_session_status"] = session_status_name
+        # C371 also reports 5; its meaning is not established. Explicitly
+        # clear an older charging label instead of retaining a stale state.
+        result["ev_session_status"] = session_status_name
 
     phase_mode_raw = result.pop("_phase_mode_raw", None)
     if isinstance(phase_mode_raw, int):
