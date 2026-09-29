@@ -263,7 +263,6 @@ _LEGACY_SINGLE_HEADER_KEYS: list[tuple[str, object, set[str]]] = [
             "grid_phase_a_active_power_w",
             "grid_phase_a_reactive_power_var",
             "grid_phase_a_apparent_power_va",
-            "grid_status",
         },
     ),
     (

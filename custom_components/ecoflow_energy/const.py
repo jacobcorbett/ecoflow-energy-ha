@@ -1337,7 +1337,7 @@ POWEROCEAN_SENSORS: list[EcoFlowSensorDef] = [
         None,
         "mdi:transmission-tower",
         "diagnostic",
-        options=["not_detected", "ok"],
+        options=["on_grid", "off_grid"],
     ),
     EcoFlowSensorDef(
         "pcs_power_factor",

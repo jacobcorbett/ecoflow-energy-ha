@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [1.23.0] - Unreleased
 
+### Fixed
+
+- PowerOcean Grid Status now uses the explicit EMS connection state:
+  `0` is `on_grid`, `1` is `off_grid`. Backup-output voltage and the energized
+  flag no longer override an outage. Unknown codes clear the previous status.
+  Automations matching `ok` or `not_detected` must migrate to the new states;
+  existing history is not rewritten.
+
 ### Added
 
 - Support for the EcoFlow OCEAN Smart Electrical Panel 40, serial prefix `HR61`: the US split-phase load panel that sits between the grid, an OCEAN Pro and the house. Read-only, and Enhanced Mode only. The panel's grid side is read per leg, L1 and L2, with voltage, current and power (apparent and reactive power are there as disabled diagnostics), next to grid, home, solar and battery power, the battery level and the grid-code values it is commissioned with. Each of up to 40 circuits gets its power, enabled, and its voltage and current, disabled, plus whether its breaker is closed. A circuit is created once the panel reports it and carries the name the owner gave it in the EcoFlow app, as in "Circuit 12 Oven Power"; a two-pole breaker stays two circuits, one per leg. Circuit power reads positive while the circuit draws and negative while it feeds the panel, which is what the breaker the OCEAN Pro sits on does. The panel sends only what changed, about every three seconds, and leaves a value out when it is zero, so a circuit that switches off drops to 0 W instead of holding its last reading. There are no energy counters: the panel sends none, and none are integrated here. The battery's charging direction has not been seen from the panel yet, only discharging and idle, so the sign convention for charging follows the rest of the integration until a recording shows it. @mr13five's diagnostics download on #434 carried the recording all of this is mapped from, and his screenshots settled which unit is which. (Ref #434)

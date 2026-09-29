@@ -479,8 +479,8 @@
       "grid_status": {
         "name": "Netzstatus",
         "state": {
-          "not_detected": "Nicht erkannt",
-          "ok": "OK"
+          "on_grid": "Netzverbunden",
+          "off_grid": "Inselbetrieb"
         }
       },
       "pcs_power_factor": {

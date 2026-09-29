@@ -31,8 +31,8 @@ _CHG_DSG_STATE_MAP: dict[int, str] = {
 }
 
 _GRID_STATUS_MAP: dict[int, str] = {
-    0: "not_detected",
-    1: "ok",
+    0: "on_grid",
+    1: "off_grid",
 }
 
 _PCS_RUN_STATE_MAP: dict[str, str] = {
@@ -418,7 +418,6 @@ def _extract_energy_stream(quota_data: dict, result: dict) -> None:
     # Enum EMS fields (numeric -> string)
     _ems_enum_int: dict[str, tuple[str, dict[int, str]]] = {
         "emsFeedMode": ("ems_feed_mode", _FEED_MODE_MAP),
-        "sysGridSta": ("grid_status", _GRID_STATUS_MAP),
         "bpChgDsgSta": ("batt_charge_discharge_state", _CHG_DSG_STATE_MAP),
     }
     for http_key, (sensor_key, mapping) in _ems_enum_int.items():
@@ -428,6 +427,13 @@ def _extract_energy_stream(quota_data: dict, result: dict) -> None:
             iv = int(v) if isinstance(v, (int, float)) else None
             if iv is not None and iv in mapping:
                 result[sensor_key] = mapping[iv]
+
+    # Explicit EMS grid connection state, not voltage on the backup output.
+    if ems_prefix + "sysGridSta" in quota_data:
+        raw_grid = quota_data[ems_prefix + "sysGridSta"]
+        result["grid_status"] = (
+            _GRID_STATUS_MAP.get(raw_grid) if type(raw_grid) is int else None
+        )
 
     # Enum EMS fields (string -> string)
     _ems_enum_str: dict[str, tuple[str, dict[str, str]]] = {

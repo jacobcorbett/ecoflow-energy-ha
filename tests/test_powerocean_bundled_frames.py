@@ -329,7 +329,7 @@ def test_heartbeat_phase_snapshot_zero_fills_and_keeps_extended_power() -> None:
     assert result["grid_phase_b_current_a"] == 0.0
     assert result["grid_phase_b_active_power_w"] == 0.0
     assert result["grid_phase_c_current_a"] == 0.0
-    assert result["grid_status"] == "ok"
+    assert "grid_status" not in result
 
 
 def test_load_info_without_current_does_not_zero_the_phase_readings() -> None:
@@ -378,7 +378,7 @@ def test_load_info_without_current_does_not_zero_the_phase_readings() -> None:
     assert result["grid_phase_b_active_power_w"] == pytest.approx(-118.80214)
     assert result["grid_phase_c_active_power_w"] == pytest.approx(-207.72481)
     assert result["grid_phase_c_apparent_power_va"] == pytest.approx(261.17725)
-    assert result["grid_status"] == "ok"
+    assert "grid_status" not in result
 
 
 def test_load_info_only_phase_reports_zero_and_no_extended_power() -> None:

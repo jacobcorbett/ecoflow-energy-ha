@@ -157,7 +157,7 @@ These sensors are pre-configured for the HA Energy Dashboard (`total_increasing`
 |:---|:---|:---:|
 | EMS Feed Mode | Current feed-in mode | enabled |
 | EMS Work Mode | Current operating mode | enabled |
-| Grid Status | Grid connection status | enabled |
+| Grid Status | Explicit EMS connection: on_grid / off_grid; unknown codes remain unknown | enabled |
 | Battery Charge/Discharge State | Current battery direction | enabled |
 | PCS Running State | Inverter running state | disabled |
 | Power Factor | Grid power factor | disabled |
