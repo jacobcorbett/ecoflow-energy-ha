@@ -16,7 +16,6 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.storage import Store
@@ -26,9 +25,14 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 
-from .const import CONF_EMAIL, CONF_PASSWORD, DOMAIN
+from .const import CONF_DEVICES, DOMAIN
 from .ecoflow.app_api import AppApiClient
-from .ecoflow.charging_history import identity, merge_orders, vehicle_totals
+from .ecoflow.charging_history import (
+    identity,
+    merge_orders,
+    valid_saved_ledger,
+    vehicle_totals,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,7 +40,9 @@ _LOGGER = logging.getLogger(__name__)
 class ChargingHistoryCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     """Persist completed orders before publishing derived totals."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, serial: str) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, serial: str, api: AppApiClient
+    ) -> None:
         """Use one cloud history poll per charger, not one per vehicle."""
         super().__init__(
             hass,
@@ -46,11 +52,7 @@ class ChargingHistoryCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]
             update_interval=timedelta(minutes=5),
         )
         self.serial = serial
-        self.api = AppApiClient(
-            async_get_clientsession(hass),
-            entry.data[CONF_EMAIL],
-            entry.data[CONF_PASSWORD],
-        )
+        self.api = api
         self.store: Store[dict[str, Any]] = Store(
             hass, 1, f"{DOMAIN}_charging_history_{identity(serial)}"
         )
@@ -59,10 +61,18 @@ class ChargingHistoryCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]
 
     async def async_restore(self) -> None:
         """Restore the ledger, including vehicles no longer returned by cloud."""
-        saved = await self.store.async_load()
-        if saved is not None:
-            self.orders = saved["orders"]
-            self.data = saved["vehicles"]
+        try:
+            saved = await self.store.async_load()
+        except (OSError, ValueError):
+            _LOGGER.warning("Could not restore charging ledger; starting empty")
+            return
+        if saved is None:
+            return
+        if not valid_saved_ledger(saved):
+            _LOGGER.warning("Invalid stored charging ledger; starting empty")
+            return
+        self.orders = saved["orders"]
+        self.data = saved["vehicles"]
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         """An incomplete fetch never publishes or persists partial totals."""
@@ -108,10 +118,14 @@ class VehicleEnergySensor(CoordinatorEntity[ChargingHistoryCoordinator], SensorE
         self._attr_translation_key = (
             "other_vehicle_energy"
             if coordinator.data[vehicle]["other"]
-            else "vehicle_energy"
+            else (
+                "vehicle_energy"
+                if coordinator.data[vehicle]["name"]
+                else "unnamed_vehicle_energy"
+            )
         )
         self._attr_translation_placeholders = {
-            "vehicle": coordinator.data[vehicle]["name"] or vehicle[:8]
+            "vehicle": coordinator.data[vehicle]["name"]
         }
 
     @property
@@ -133,12 +147,12 @@ async def async_setup_charging_history(
     serial: str,
     device_info: DeviceInfo,
     async_add_entities: AddEntitiesCallback,
+    api: AppApiClient,
 ) -> ChargingHistoryCoordinator:
     """Discover each profile after its first completed record, without reload."""
-    coordinator = ChargingHistoryCoordinator(hass, entry, serial)
+    coordinator = ChargingHistoryCoordinator(hass, entry, serial, api)
     # Explicit setup allows restored entities to remain present on API failure.
     await coordinator.async_restore()
-    await coordinator.async_refresh()
     known: set[str] = set()
 
     @callback
@@ -156,4 +170,57 @@ async def async_setup_charging_history(
     entry.async_on_unload(coordinator.async_add_listener(discover))
     entry.async_on_unload(coordinator.async_shutdown)
     discover()
+    entry.async_create_background_task(
+        hass, coordinator.async_refresh(), "EcoFlow initial charging history"
+    )
     return coordinator
+
+
+def _history_index(hass: HomeAssistant, entry: ConfigEntry) -> Store[list[str]]:
+    return Store(hass, 1, f"{DOMAIN}_charging_history_index_{entry.entry_id}")
+
+
+async def async_register_history_stores(
+    hass: HomeAssistant, entry: ConfigEntry, serials: list[str]
+) -> None:
+    """Remember ledgers even if a charger is later deselected from the entry."""
+    index = _history_index(hass, entry)
+    saved = await index.async_load()
+    hashes = (
+        {
+            s
+            for s in (saved or [])
+            if isinstance(s, str)
+            and len(s) == 64
+            and all(c in "0123456789abcdef" for c in s)
+        }
+        if isinstance(saved, list)
+        else set()
+    )
+    hashes.update(identity(serial) for serial in serials)
+    await index.async_save(sorted(hashes))
+
+
+async def async_remove_history_stores(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Deleting the entry deletes its retained charging history, not disabling it."""
+    index = _history_index(hass, entry)
+    saved = await index.async_load()
+    hashes = (
+        {
+            s
+            for s in (saved or [])
+            if isinstance(s, str)
+            and len(s) == 64
+            and all(c in "0123456789abcdef" for c in s)
+        }
+        if isinstance(saved, list)
+        else set()
+    )
+    hashes.update(
+        identity(d["sn"])
+        for d in entry.data.get(CONF_DEVICES, [])
+        if isinstance(d.get("sn"), str)
+    )
+    for hashed in hashes:
+        await Store(hass, 1, f"{DOMAIN}_charging_history_{hashed}").async_remove()
+    await index.async_remove()

@@ -131,10 +131,12 @@ sensor in kWh. An **Unassigned completed charging energy** sensor collects the
 vendor's Other/unassigned profile. These dynamic sensors are additional to the
 fixed sensor count above. No sensor is created for a profile with no completed
 records. Once opted in, newly discovered profiles appear without reloading.
+Profiles with blank names display as **Unnamed vehicle completed charging energy**.
 
-C371 is supported for this history path, including when its live telemetry is
-otherwise unsupported. C376/C374 use the same PowerPulse endpoint, but live
-history validation to date is C371. This feature adds no controls or writes to
+History attaches to existing PowerPulse device coordinators. C371 registration
+depends on the separate C371 telemetry support change (#446); this feature does
+not register unsupported devices itself. C376/C374 use the same PowerPulse
+endpoint, but live history validation to date is C371. This feature adds no controls or writes to
 the charger. Initial verification compared 16004 raw Wh with 16.00 kWh in the
 EcoFlow completed-session screen. Do not use `watthCharge` as delivered energy;
 it is a different field.
@@ -147,7 +149,12 @@ the label (or give the entity a custom name in Home Assistant). Entity identity 
 Attribution follows the profile selected in EcoFlow for that session, not vehicle
 identification: select the correct profile before charging another car.
 
-History is polled every five minutes, independently of the live MQTT connection.
+Saved totals and entities restore before the first cloud fetch runs in the
+background, so a slow history request does not hold up sensor setup. History is
+polled every five minutes, independently of the live MQTT connection. All history
+readers in an entry share one API client and sign-in. Failed sign-in or a rejected
+refreshed session pauses authentication attempts for one hour across those readers;
+reloading the entry allows an earlier retry after credentials are fixed.
 Every page must succeed before any totals change. Requests use the verified
 one-based `page` and `size` parameters. Inconsistent pagination, malformed records,
 API failures, a 60-second overall timeout and the 100-page safety limit mark
@@ -161,7 +168,14 @@ rather than adding the same energy again. Cloud retention or profile deletion
 does not remove already collected orders. Back up this ledger with Home Assistant;
 deleting it loses records the cloud no longer has. The ledger stores hashed order
 and profile identities, names, energy and completion times, not raw API responses,
-account IDs or RFID data.
+account IDs or RFID data. Invalid stored ledger data is ignored with a warning,
+and the next successful fetch starts a fresh ledger.
+
+Turning the option off unloads the history sensors but retains their entity
+registry entries and saved ledger. Re-enabling it restores those totals. Removing
+the integration entry deletes its saved history, including ledgers for chargers
+previously selected in that entry. Back up Home Assistant before removing an entry
+if you need to preserve records no longer held by EcoFlow.
 
 These sensors use state class `total`, since a corrected record can reduce one
 profile's total or move energy to another. They can be used as individual-device

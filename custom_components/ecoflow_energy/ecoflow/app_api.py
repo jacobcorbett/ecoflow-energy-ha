@@ -7,7 +7,9 @@ Uses aiohttp for async HTTP - HA provides the ClientSession.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from typing import Any
 
 import aiohttp
@@ -18,6 +20,10 @@ from .enhanced_auth import enhanced_login, get_enhanced_credentials
 _LOGGER = logging.getLogger(__name__)
 
 _DEVICE_LIST_PATH = "/iot-service/user/device"
+
+
+class HistoryLoginError(ValueError):
+    """History sign-in failed; callers must back off instead of retrying per charger."""
 
 
 class AppApiClient:
@@ -39,6 +45,8 @@ class AppApiClient:
         self._token: str | None = None
         self._user_id: str | None = None
         self._base_url: str = IOT_API_BASE
+        self._history_lock = asyncio.Lock()
+        self._history_retry_after = 0.0
 
     @property
     def token(self) -> str | None:
@@ -119,6 +127,17 @@ class AppApiClient:
             return []
 
     async def get_powerpulse_orders(self, serial: str) -> list[dict[str, Any]]:
+        """Serialize entry-wide reads and back off failed sign-in for an hour."""
+        async with self._history_lock:
+            if time.monotonic() < self._history_retry_after:
+                raise HistoryLoginError("Charging history sign-in is backed off")
+            try:
+                return await self._get_powerpulse_orders(serial)
+            except HistoryLoginError:
+                self._history_retry_after = time.monotonic() + 3600
+                raise
+
+    async def _get_powerpulse_orders(self, serial: str) -> list[dict[str, Any]]:
         """Read every completed-order page, or fail without partial accounting.
 
         The portal uses this read-only endpoint. C371 live reads confirm one-
@@ -127,7 +146,7 @@ class AppApiClient:
         history. Never log a response, request URL, serial or vehicle name.
         """
         if not self._token and not await self.login():
-            raise ValueError("Charging history login failed")
+            raise HistoryLoginError("Charging history login failed")
         rows: list[dict[str, Any]] = []
         seen_pages: set[tuple[str, ...]] = set()
         expected_total: int | None = None
@@ -145,8 +164,10 @@ class AppApiClient:
                     )
                     if refused and attempt == 0:
                         if not await self.login():
-                            raise ValueError("Charging history login failed")
+                            raise HistoryLoginError("Charging history login failed")
                         continue
+                    if refused:
+                        raise HistoryLoginError("Charging history session rejected")
                     response.raise_for_status()
                 break
             if not isinstance(body, dict) or str(body.get("code")) != "0":

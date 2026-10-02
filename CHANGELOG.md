@@ -14,8 +14,9 @@ All notable changes to this project will be documented in this file.
   cloud orders; unassigned orders have a separate total. A local order ledger
   survives restarts, deduplicates polls, and accepts corrected records without
   treating a reduction as a meter reset. New profiles appear after their first
-  completed charge. C371 supports this history path without enabling unverified
-  live controls. This does not identify the physically connected car or show
+  completed charge. Saved totals restore before the initial background fetch;
+  history readers share a sign-in and back off after authentication failures.
+  This does not identify the physically connected car or show
   in-progress charging energy.
 
 - The RIVER 3 (`R655`) is supported, read-only and in Enhanced Mode only: battery level, input, output and AC input power, the AC input and output energy counters, the charge state, remaining time, and the battery's health, cell and temperature readings. Mapped from @nicolklup's diagnostics download of three units and his own decoding, which showed the RIVER 3 sends the Delta 3 frames; the values match the app. It has no switches, numbers or selects, because nothing recorded so far shows that a setting written to it is accepted. The DC and USB outputs are not read yet: on one unit the app showed 2 W of DC output while the matching Delta 3 field read 0 W, so this model reports those ports somewhere the Delta 3 message does not cover, and no unit had a USB load. The RIVER 3 Plus is not included. The remaining-time sensors read unknown while the unit reports itself idle, which all three units did.

@@ -476,13 +476,10 @@ class OptionsFlowMixin(_Base):
         new_data[CONF_MODE] = mode
         new_data[CONF_DEVICES] = selected_devices
         self._apply_raw_capture(new_data)
+        wanted = self._pending_vehicle_energy
         new_data[CONF_VEHICLE_ENERGY] = bool(
             mode == MODE_ENHANCED
-            and getattr(
-                self,
-                "_pending_vehicle_energy",
-                new_data.get(CONF_VEHICLE_ENERGY, False),
-            )
+            and (new_data.get(CONF_VEHICLE_ENERGY, False) if wanted is None else wanted)
         )
 
         if mode == MODE_ENHANCED:

@@ -31,7 +31,11 @@ LANGS = ("en", "de")
 # Diagnostic sensors created directly in sensor.py (not definition-driven)
 DIAGNOSTIC_SENSOR_KEYS = {"mqtt_status", "connection_mode"}
 # Runtime-discovered vehicle sensors in charging_history.py.
-VEHICLE_SENSOR_KEYS = {"vehicle_energy", "other_vehicle_energy"}
+VEHICLE_SENSOR_KEYS = {
+    "vehicle_energy",
+    "other_vehicle_energy",
+    "unnamed_vehicle_energy",
+}
 
 
 def _collect(pattern: str) -> dict[str, Any]:
