@@ -21,6 +21,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
+    AUTH_METHOD_APP,
+    CONF_AUTH_METHOD,
+    CONF_DEVICES,
+    CONF_VEHICLE_ENERGY,
     DELTA2MAX_SENSORS,
     DELTA3_SENSORS,
     DELTAPROULTRA_SENSORS,
@@ -131,6 +135,36 @@ async def async_setup_entry(
             )
 
     async_add_entities(entities)
+
+    if (
+        entry.data.get(CONF_VEHICLE_ENERGY)
+        and entry.data.get(CONF_AUTH_METHOD) == AUTH_METHOD_APP
+    ):
+        from .charging_history import async_setup_charging_history
+        from .ecoflow.const import get_device_type
+
+        for device in entry.data.get(CONF_DEVICES, []):
+            serial = device["sn"]
+            if (
+                not serial.startswith("C371")
+                and get_device_type(device.get("product_name") or "", serial)
+                != DEVICE_TYPE_POWERPULSE2
+            ):
+                continue
+            history_source = coordinators.get(serial)
+            info = (
+                history_source.device_info
+                if history_source is not None
+                else DeviceInfo(
+                    identifiers={(DOMAIN, serial)},
+                    manufacturer="EcoFlow",
+                    model="PowerPulse 2",
+                    name="PowerPulse 2",
+                )
+            )
+            await async_setup_charging_history(
+                hass, entry, serial, info, async_add_entities
+            )
 
 
 @callback

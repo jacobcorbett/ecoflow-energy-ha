@@ -121,3 +121,53 @@ The PowerPulse 2 reports when something changes and otherwise stays silent, char
 ### Single-phase charging
 
 When the vehicle charges single-phase, only Wallbox Current L1 carries a real reading; Wallbox Current L2 and Wallbox Current L3 read 0 A.
+
+## Completed energy per vehicle profile
+
+With EcoFlow account sign-in, enable **Track completed PowerPulse charging energy
+by vehicle** in the integration options and select the charger. Each profile
+found in completed cloud orders gets a **Vehicle-name completed charging energy**
+sensor in kWh. An **Unassigned completed charging energy** sensor collects the
+vendor's Other/unassigned profile. These dynamic sensors are additional to the
+fixed sensor count above. No sensor is created for a profile with no completed
+records. Once opted in, newly discovered profiles appear without reloading.
+
+C371 is supported for this history path, including when its live telemetry is
+otherwise unsupported. C376/C374 use the same PowerPulse endpoint, but live
+history validation to date is C371. This feature adds no controls or writes to
+the charger. Initial verification compared 16004 raw Wh with 16.00 kWh in the
+EcoFlow completed-session screen. Do not use `watthCharge` as delivered energy;
+it is a different field.
+
+The sensor attributes include the completed-session count and the name on the
+latest completed record. Names come from charging records, not a live profile
+catalogue; the entity label is set on discovery, while the `profile_name`
+attribute follows the latest returned record. Reload after a rename to refresh
+the label (or give the entity a custom name in Home Assistant). Entity identity follows the profile ID, so equal names do not merge separate cars.
+Attribution follows the profile selected in EcoFlow for that session, not vehicle
+identification: select the correct profile before charging another car.
+
+History is polled every five minutes, independently of the live MQTT connection.
+Every page must succeed before any totals change. Requests use the verified
+one-based `page` and `size` parameters. Inconsistent pagination, malformed records,
+API failures, a 60-second overall timeout and the 100-page safety limit mark
+the sensors unavailable and retain the ledger, rather than publishing incomplete totals. A subsequent successful
+poll recovers automatically.
+
+The initial total includes completed records still available from EcoFlow. It is
+not a guarantee of lifetime history. Home Assistant stores a deduplicated ledger
+under `.storage/ecoflow_energy_charging_history_*`; subsequent polls upsert orders
+rather than adding the same energy again. Cloud retention or profile deletion
+does not remove already collected orders. Back up this ledger with Home Assistant;
+deleting it loses records the cloud no longer has. The ledger stores hashed order
+and profile identities, names, energy and completion times, not raw API responses,
+account IDs or RFID data.
+
+These sensors use state class `total`, since a corrected record can reduce one
+profile's total or move energy to another. They can be used as individual-device
+energy counters. HA statistics record changes when orders are imported, not at
+the historical charge times; initial history is a baseline and completed sessions
+arrive as increments, not a live power curve. Do not add per-car counters and the
+charger's overall energy as separate consumption sources, which would count the
+same energy twice. The running session remains on the existing session-energy
+sensor and is excluded here until it has an end time.

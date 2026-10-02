@@ -25,6 +25,7 @@ from .const import (
     CONF_PASSWORD,
     CONF_RAW_CAPTURE,
     CONF_RAW_CAPTURE_UNTIL,
+    CONF_VEHICLE_ENERGY,
     DATA_DEVICE_PROBES,
     DATA_SKIPPED_DEVICES,
     DEVICE_TYPE_DISPLAY_NAMES,
@@ -552,6 +553,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: EcoFlowConfigEntry) -> b
                     "probe_eligible": False,
                 }
             )
+            continue
+        # C371 has verified completed-history support without claiming that
+        # the C376 live controls/parser have been validated on this model.
+        if (
+            sn.startswith("C371")
+            and entry.data.get(CONF_VEHICLE_ENERGY)
+            and entry.data.get(CONF_AUTH_METHOD) == AUTH_METHOD_APP
+            and (not device_type or device_type == DEVICE_TYPE_UNKNOWN)
+        ):
             continue
         if not device_type or device_type == DEVICE_TYPE_UNKNOWN:
             # One WARNING per unsupported device per setup: the user sees

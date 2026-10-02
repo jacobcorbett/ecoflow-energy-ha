@@ -8,6 +8,16 @@ All notable changes to this project will be documented in this file.
 
 - The PowerPulse 2 `C371` is supported, read-only and in Enhanced Mode only, with the same 18 sensors and binary sensor as the `C376` and `C374`. Contributed by @jacobcorbett, from his recording of a session paused by the car and an overnight charge he compared against the app: 6,995 W against 6.98 kW while charging, and 33,821 Wh against 33.82 kWh for the session. It has no buttons, numbers, selects or switches, because no write to a `C371` has been confirmed yet. A PowerPulse 2 paused by the car now reads Paused by Vehicle instead of keeping its previous charging state. (Ref #7)
 
+- Opt-in completed charging energy per vehicle profile for PowerPulse 2 with
+  account sign-in. Enable **Track completed PowerPulse charging energy by
+  vehicle** in integration options. Each profile gets a kWh total from completed
+  cloud orders; unassigned orders have a separate total. A local order ledger
+  survives restarts, deduplicates polls, and accepts corrected records without
+  treating a reduction as a meter reset. New profiles appear after their first
+  completed charge. C371 supports this history path without enabling unverified
+  live controls. This does not identify the physically connected car or show
+  in-progress charging energy.
+
 - The RIVER 3 (`R655`) is supported, read-only and in Enhanced Mode only: battery level, input, output and AC input power, the AC input and output energy counters, the charge state, remaining time, and the battery's health, cell and temperature readings. Mapped from @nicolklup's diagnostics download of three units and his own decoding, which showed the RIVER 3 sends the Delta 3 frames; the values match the app. It has no switches, numbers or selects, because nothing recorded so far shows that a setting written to it is accepted. The DC and USB outputs are not read yet: on one unit the app showed 2 W of DC output while the matching Delta 3 field read 0 W, so this model reports those ports somewhere the Delta 3 message does not cover, and no unit had a USB load. The RIVER 3 Plus is not included. The remaining-time sensors read unknown while the unit reports itself idle, which all three units did.
 
 - The Smart Home Panel 2 (`HD31`) is supported, read-only and in Enhanced Mode only: grid and home power, grid current per leg and grid voltage, the level, remaining energy and capacity of the connected batteries, the backup runtime, power and current for each of the twelve circuits with the name set in the app, and the level of each connected storage channel. Mapped from @jrbeir's two diagnostics downloads, where the circuits add up to the home power within 1.5 W. The battery was idle while they were recorded, so the storage channels' charging and discharging power is not read yet. A panel circuit that is reported under its default name "Circuit N" is now labelled by its number alone, the Smart Panel 40 included, so its sensors read "Circuit 1 Power" instead of "Circuit 1 Circuit 1 Power" after a reload.
