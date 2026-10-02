@@ -1,6 +1,7 @@
 {
   "domain": "ecoflow_energy",
   "name": "EcoFlow Energy",
+  "after_dependencies": ["modbus"],
   "codeowners": ["@shuette42"],
   "config_flow": true,
   "documentation": "https://github.com/shuette42/ecoflow-energy-ha",
@@ -8,5 +9,5 @@
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/shuette42/ecoflow-energy-ha/issues",
   "requirements": [],
-  "version": "1.23.0"
+  "version": "1.24.0"
 }

@@ -246,6 +246,23 @@ These four sensors exist only in a Local (Modbus/TCP) entry. Standard Mode and E
 
 ---
 
+## Controls - Local Modbus Only
+
+A Local (Modbus/TCP) entry also creates these four entities. Standard Mode and Enhanced Mode never create them.
+
+| Entity | Type | Description | Default |
+|:---|:---:|:---|:---:|
+| Modbus Control | Switch | Takes control of the PowerOcean over Modbus. While it is on, the EcoFlow app is locked and does not accept changes. After you switch it off, the app stays locked for about a minute before the PowerOcean hands control back. The switch is always off after Home Assistant or the integration restarts, and it turns itself off when the PowerOcean stops answering the keep-alive messages | enabled |
+| Backup Reserve | Number | The battery charge level kept in reserve, from 0 to 100 %. It works with Modbus Control off. Home Assistant shows the value the PowerOcean holds after the write, so a change the PowerOcean does not take leaves the old value in place and reports an error | enabled |
+| Indicator Brightness | Number | The brightness of the PowerOcean's indicator light, from 0 to 100 %. Listed as a configuration entity. It works with Modbus Control off and confirms a change the same way as Backup Reserve | enabled |
+| Modbus Control Active | Binary sensor | Whether the PowerOcean itself reports that Modbus Control is active. A diagnostic entity, unknown until the PowerOcean has reported it | enabled |
+
+Backup Reserve and Indicator Brightness keep the value you wrote after Modbus Control ends. Switching Modbus Control off does not undo them. The sensor EMS Backup Ratio and the number Backup Reserve show the same device value.
+
+The PowerOcean accepts one Modbus client at a time. While this integration holds that connection, another Modbus client, for example a second integration, cannot connect. Two integrations can share the device only when both use Home Assistant's shared Modbus connection and enter the same host string.
+
+---
+
 ## Feed-to-Grid Schedules (accessory, Enhanced Mode)
 
 Created only for the feed-to-grid schedules your system actually reports, up to eight. These are the schedules the app calls "feed power to grid": a time of day during which the PowerOcean exports a set power from the battery to the grid. They are a separate list from the charge schedules above, numbered on their own, so Feed Schedule 3 and Schedule 3 are two different schedules. See the note at the top.

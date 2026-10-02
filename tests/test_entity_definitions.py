@@ -30,6 +30,7 @@ and read as covered while nothing dispatches it.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable
 from pathlib import Path
@@ -96,6 +97,30 @@ def _local_sensor_defs() -> list[Any]:
     return C.POWEROCEAN_LOCAL_SENSOR_DEFS
 
 
+def _local_control_defs() -> list[list[Any]]:
+    """Mirror the switch, number and binary sensor platforms' Local branch.
+
+    Each of those platforms hands a Local entry exactly one list, named inline
+    in ``async_setup_entry`` and returned by no device-type dispatcher. The
+    controls that exist only there would read as unreachable without this
+    shim, and `test_control_platform_local_branches_are_the_only_ones` below
+    fails if a platform ever names a different list.
+    """
+    return [
+        C.POWEROCEANLOCALONLY_SWITCHES,
+        C.POWEROCEANLOCALONLY_NUMBERS,
+        C.POWEROCEANLOCALONLY_BINARY_SENSORS,
+    ]
+
+
+# Platform file -> the one Local-only block it may name.
+LOCAL_CONTROL_LISTS: dict[str, str] = {
+    "switch.py": "POWEROCEANLOCALONLY_SWITCHES",
+    "number.py": "POWEROCEANLOCALONLY_NUMBERS",
+    "binary_sensor.py": "POWEROCEANLOCALONLY_BINARY_SENSORS",
+}
+
+
 # Every dispatcher is called as (device_type, device_sn); the two that ignore
 # the serial are wrapped so the call site stays uniform.
 DISPATCHERS: dict[str, Callable[[str, str], list[Any]]] = {
@@ -143,6 +168,7 @@ def _dispatcher_outputs() -> list[list[Any]]:
             for dispatch in DISPATCHERS.values():
                 outputs.append(dispatch(device_type, device_sn))
     outputs.append(_local_sensor_defs())
+    outputs.extend(_local_control_defs())
     return outputs
 
 
@@ -243,6 +269,23 @@ def test_sensor_platform_local_branch_is_the_only_one() -> None:
     )
 
 
+def test_control_platform_local_branches_are_the_only_ones() -> None:
+    """`_local_control_defs` mirrors three platforms, each naming one Local list.
+
+    switch.py, number.py and binary_sensor.py pick the Local entry's
+    definitions inline; this file mirrors those picks. A platform that starts
+    naming another `POWEROCEANLOCALONLY_*` list leaves it unchecked for
+    reachability until the shim is updated.
+    """
+    for filename, expected in LOCAL_CONTROL_LISTS.items():
+        text = (COMPONENT_DIR / "ecoflow_energy" / filename).read_text()
+        named = set(re.findall(r"\bPOWEROCEANLOCALONLY_[A-Z_]+\b", text))
+        assert named == {expected}, (
+            f"{filename} names {sorted(named)} for the Local entry; this test "
+            f"file mirrors only {expected} in `_local_control_defs`."
+        )
+
+
 def test_reachability_check_tells_dispatched_from_undispatched() -> None:
     """Control for the two tests below: the check can say no, and can say yes.
 
@@ -307,3 +350,52 @@ def test_every_device_type_has_sensors(constant: str) -> None:
         "type with no sensor produces a device entry with nothing in it - "
         "either wire it into _get_sensor_defs or remove the type."
     )
+
+
+# The four Local controls: platform, the English name (title case, like every
+# other entity name here) and the German name (German capitalises its nouns, so
+# the German forms are not the English ones with other words).
+LOCAL_CONTROL_NAMES = {
+    "modbus_control": ("switch", "Modbus Control", "Modbus-Steuerung"),
+    "local_backup_reserve": ("number", "Backup Reserve", "Backup-Reserve"),
+    "local_indicator_brightness": (
+        "number",
+        "Indicator Brightness",
+        "Anzeigehelligkeit",
+    ),
+    "modbus_control_active": (
+        "binary_sensor",
+        "Modbus Control Active",
+        "Modbus-Steuerung aktiv",
+    ),
+}
+
+
+def test_the_local_control_names_are_title_case_in_every_file() -> None:
+    """Definition, strings.json, en.json and de.json agree on the four names."""
+    definitions = {
+        definition.key: definition.name
+        for block in (
+            C.POWEROCEANLOCALONLY_SWITCHES,
+            C.POWEROCEANLOCALONLY_NUMBERS,
+            C.POWEROCEANLOCALONLY_BINARY_SENSORS,
+        )
+        for definition in block
+    }
+    assert set(definitions) == set(LOCAL_CONTROL_NAMES)
+
+    component = COMPONENT_DIR / "ecoflow_energy"
+    files = {
+        "strings.json": json.loads((component / "strings.json").read_text("utf-8")),
+        "translations/en.json": json.loads(
+            (component / "translations" / "en.json").read_text("utf-8")
+        ),
+        "translations/de.json": json.loads(
+            (component / "translations" / "de.json").read_text("utf-8")
+        ),
+    }
+    for key, (platform, english, german) in LOCAL_CONTROL_NAMES.items():
+        assert definitions[key] == english, key
+        for name, data in files.items():
+            expected = german if name.endswith("de.json") else english
+            assert data["entity"][platform][key]["name"] == expected, (name, key)

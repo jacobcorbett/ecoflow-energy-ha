@@ -69,8 +69,15 @@ PLATFORMS: list[Platform] = [
     Platform.BUTTON,
 ]
 
-# A local Modbus entry is read-only by construction: sensors and nothing else.
-LOCAL_PLATFORMS: list[Platform] = [Platform.SENSOR]
+# A local Modbus entry: the readings, plus the one control switch, the two
+# writable settings and the diagnostic that shows whether the unit accepted
+# control. Nothing else of the cloud platform list applies to it.
+LOCAL_PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.SWITCH,
+    Platform.NUMBER,
+    Platform.BINARY_SENSOR,
+]
 
 # Config entry keys
 CONF_UNIT_ID = "unit_id"
@@ -128,6 +135,10 @@ MODE_LOCAL = "local"
 LOCAL_MODBUS_POLL_INTERVAL_S = 2
 LOCAL_MODBUS_TIMEOUT_S = 3.0
 LOCAL_MODBUS_FAILURES_UNAVAILABLE = 5
+# Control heartbeat: a beat every 15 s; the unit hands control back to the app
+# after 60 s without an acknowledged one, so the integration stops there too.
+LOCAL_MODBUS_HEARTBEAT_INTERVAL_S = 15
+LOCAL_MODBUS_HEARTBEAT_LAPSE_S = 60
 
 # Coordinator - Stale detection
 STALE_THRESHOLD_S = (
@@ -578,6 +589,9 @@ class EcoFlowNumberDef:
     # the wallbox's own channel. None (every other number in the app) means no
     # restriction. See _get_number_defs() / async_setup_entry() in number.py.
     powerpulse_route: Literal["sibling", "own"] | None = None
+    # Same meaning as on the sensor and binary sensor definitions ("config" or
+    # "diagnostic"). Both number platforms, cloud and local, apply it.
+    entity_category: str | None = None
 
 
 @dataclass(frozen=True)
@@ -2380,6 +2394,59 @@ POWEROCEAN_LOCAL_SENSOR_DEFS: list[EcoFlowSensorDef] = [
     for sensor_def in POWEROCEAN_SENSORS
     if sensor_def.key in POWEROCEAN_LOCAL_KEYS
 ] + POWEROCEANLOCALONLY_SENSORS
+
+# The controls of a local entry. Each is created only there, by the
+# platform's local branch, never through a device-type dispatcher. Names are the
+# user's words. The block names follow the convention discovery relies on:
+# `<FAMILY>_<PLATFORM>` with one family token (see `POWEROCEANLOCALONLY_SENSORS`).
+#
+# The switch has no data key: it shows the coordinator's `control_enabled` flag,
+# which starts off on every entry start and is never restored. `state_key` only
+# names the reading its definition is filed under.
+POWEROCEANLOCALONLY_SWITCHES: list[EcoFlowSwitchDef] = [
+    EcoFlowSwitchDef(
+        "modbus_control",
+        "Modbus Control",
+        "modbus_control_active",
+        "mdi:remote",
+    ),
+]
+
+# Backup reserve reads the register the "EMS Backup Ratio" sensor shows, under
+# its own key so the two entities keep separate unique ids. Both settings are
+# written with a read-back, and neither needs the control switch to be on.
+POWEROCEANLOCALONLY_NUMBERS: list[EcoFlowNumberDef] = [
+    EcoFlowNumberDef(
+        "local_backup_reserve",
+        "Backup Reserve",
+        "ems_backup_ratio_pct",
+        "%",
+        "mdi:battery-lock",
+        0,
+        100,
+        1,
+    ),
+    EcoFlowNumberDef(
+        "local_indicator_brightness",
+        "Indicator Brightness",
+        "local_indicator_brightness_pct",
+        "%",
+        "mdi:brightness-percent",
+        0,
+        100,
+        1,
+        entity_category="config",
+    ),
+]
+
+POWEROCEANLOCALONLY_BINARY_SENSORS: list[EcoFlowBinarySensorDef] = [
+    EcoFlowBinarySensorDef(
+        "modbus_control_active",
+        "Modbus Control Active",
+        icon="mdi:remote",
+        entity_category="diagnostic",
+    ),
+]
 
 POWEROCEAN_NUMBERS: list[EcoFlowNumberDef] = [
     # Backup-Reserve (App-slider): minimum SoC kept in reserve. Wire field 2

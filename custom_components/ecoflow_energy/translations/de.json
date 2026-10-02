@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Verbindungsmodus",
-        "description": "Wie soll die Verbindung zu deinen EcoFlow-Geräten hergestellt werden?\n\n**Standard** - Offizielle EcoFlow IoT API. Von EcoFlow unterstützt. Updates alle 10-30 Sekunden. Erfordert Developer API Keys.\n\n**Enhanced** - Community-basierte Echtzeit-Verbindung. Updates alle ~3 Sekunden. Erfordert dein EcoFlow-App-Login. Inoffiziell - Nutzung auf eigene Verantwortung.\n\n**Local** - Direkte Modbus/TCP-Verbindung zu einem PowerOcean in deinem Netzwerk. Keine Cloud und kein Konto nötig. Updates alle ~10 Sekunden. Nur lesend. Unterstützt wird nur der dreiphasige PowerOcean. Modbus muss für dein Gerät vorher vom EcoFlow-Support freigeschaltet werden.",
+        "description": "Wie soll die Verbindung zu deinen EcoFlow-Geräten hergestellt werden?\n\n**Standard** - Offizielle EcoFlow IoT API. Von EcoFlow unterstützt. Updates alle 10-30 Sekunden. Erfordert Developer API Keys.\n\n**Enhanced** - Community-basierte Echtzeit-Verbindung. Updates alle ~3 Sekunden. Erfordert dein EcoFlow-App-Login. Inoffiziell - Nutzung auf eigene Verantwortung.\n\n**Local** - Direkte Modbus/TCP-Verbindung zu einem PowerOcean in deinem Netzwerk. Keine Cloud und kein Konto nötig. Updates alle ~2 Sekunden. Zeigt Werte an und kann zwei Einstellungen ändern (Backup-Reserve und Anzeigehelligkeit). Unterstützt wird nur der dreiphasige PowerOcean. Modbus muss für dein Gerät vorher vom EcoFlow-Support freigeschaltet werden.",
         "data": {
           "mode": "Verbindungsmodus"
         }
@@ -26,7 +26,7 @@
       },
       "local": {
         "title": "Lokale Modbus/TCP-Verbindung",
-        "description": "Lies deinen PowerOcean direkt per Modbus/TCP aus, ohne die EcoFlow-Cloud. Die Verbindung ist nur lesend: Es wird nichts auf das Gerät geschrieben.\n\nModbus muss für dein Gerät vorher vom EcoFlow-Support freigeschaltet werden. Das Gerät bedient nur einen Modbus-Client gleichzeitig, schließe also jedes andere Modbus-Werkzeug, bevor du fortfährst.\n\nNutze als Host möglichst den DNS-Namen des Geräts.",
+        "description": "Verbinde deinen PowerOcean direkt per Modbus/TCP, ohne die EcoFlow-Cloud. Backup-Reserve und die Helligkeit der Anzeige-LED lassen sich aus Home Assistant ändern. Der Schalter Modbus-Steuerung ist standardmäßig aus, und solange er an ist, ist die EcoFlow-App gesperrt.\n\nModbus muss für dein Gerät vorher vom EcoFlow-Support freigeschaltet werden. Das Gerät bedient nur einen Modbus-Client gleichzeitig, schließe also jedes andere Modbus-Werkzeug, bevor du fortfährst. Zwei Integrationen können sich das Gerät nur teilen, wenn beide die gemeinsame Modbus-Verbindung von Home Assistant mit exakt demselben Host-Eintrag nutzen.\n\nNutze als Host möglichst den DNS-Namen des Geräts.",
         "data": {
           "host": "Host",
           "port": "Port",
@@ -2647,6 +2647,9 @@
       },
       "circuit_on": {
         "name": "Stromkreis {label} Ein"
+      },
+      "modbus_control_active": {
+        "name": "Modbus-Steuerung aktiv"
       }
     },
     "switch": {
@@ -2766,6 +2769,9 @@
       },
       "pet_care_enabled": {
         "name": "Haustier-Schutz"
+      },
+      "modbus_control": {
+        "name": "Modbus-Steuerung"
       }
     },
     "number": {
@@ -2909,6 +2915,12 @@
       },
       "ev_charge_current_a": {
         "name": "Wallbox-Ladestrom"
+      },
+      "local_backup_reserve": {
+        "name": "Backup-Reserve"
+      },
+      "local_indicator_brightness": {
+        "name": "Anzeigehelligkeit"
       }
     },
     "select": {

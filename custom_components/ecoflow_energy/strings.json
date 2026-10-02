@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connection Mode",
-        "description": "Choose how to connect to your EcoFlow devices.\n\n**Standard** - Official EcoFlow IoT API. Supported by EcoFlow. Updates every 10-30 seconds. Requires Developer API keys.\n\n**Enhanced** - Community-driven real-time connection. Updates every ~3 seconds. Requires your EcoFlow app login. Unofficial - use at your own risk.\n\n**Local** - Direct Modbus/TCP connection to a PowerOcean on your network. No cloud and no account needed. Updates every ~10 seconds. Read-only. Only the three-phase PowerOcean is supported. Modbus has to be enabled for your device by EcoFlow support first.",
+        "description": "Choose how to connect to your EcoFlow devices.\n\n**Standard** - Official EcoFlow IoT API. Supported by EcoFlow. Updates every 10-30 seconds. Requires Developer API keys.\n\n**Enhanced** - Community-driven real-time connection. Updates every ~3 seconds. Requires your EcoFlow app login. Unofficial - use at your own risk.\n\n**Local** - Direct Modbus/TCP connection to a PowerOcean on your network. No cloud and no account needed. Updates every ~2 seconds. Shows values and can change two settings (Backup Reserve and Indicator Brightness). Only the three-phase PowerOcean is supported. Modbus has to be enabled for your device by EcoFlow support first.",
         "data": {
           "mode": "Connection Mode"
         }
@@ -26,7 +26,7 @@
       },
       "local": {
         "title": "Local Modbus/TCP Connection",
-        "description": "Read your PowerOcean directly over Modbus/TCP, without the EcoFlow cloud. This connection is read-only: nothing is written to the device.\n\nModbus has to be enabled for your device by EcoFlow support first. The device serves one Modbus client at a time, so close any other Modbus tool before you continue.\n\nUse the DNS name of the device as the host where you can.",
+        "description": "Connect your PowerOcean directly over Modbus/TCP, without the EcoFlow cloud. Backup Reserve and the Indicator Brightness can be changed from Home Assistant. The Modbus Control switch is off by default, and while it is on, the EcoFlow app is locked.\n\nModbus has to be enabled for your device by EcoFlow support first. The device serves one Modbus client at a time, so close any other Modbus tool before you continue. Two integrations can share the device only when both use Home Assistant's shared Modbus connection with exactly the same host string.\n\nUse the DNS name of the device as the host where you can.",
         "data": {
           "host": "Host",
           "port": "Port",
@@ -2647,6 +2647,9 @@
       },
       "circuit_on": {
         "name": "Circuit {label} On"
+      },
+      "modbus_control_active": {
+        "name": "Modbus Control Active"
       }
     },
     "switch": {
@@ -2766,6 +2769,9 @@
       },
       "pet_care_enabled": {
         "name": "Pet Care"
+      },
+      "modbus_control": {
+        "name": "Modbus Control"
       }
     },
     "number": {
@@ -2909,6 +2915,12 @@
       },
       "ev_charge_current_a": {
         "name": "Wallbox Charging Current"
+      },
+      "local_backup_reserve": {
+        "name": "Backup Reserve"
+      },
+      "local_indicator_brightness": {
+        "name": "Indicator Brightness"
       }
     },
     "select": {

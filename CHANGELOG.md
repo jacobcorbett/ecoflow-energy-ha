@@ -2,7 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.23.0] - Unreleased
+## [1.24.0] - Unreleased
+
+### Added
+
+- Opt-in completed charging energy per vehicle profile for PowerPulse 2 with
+  account sign-in. Enable **Track completed PowerPulse charging energy by
+  vehicle** in integration options. Each profile gets a kWh total from completed
+  cloud orders; unassigned orders have a separate total. A local order ledger
+  survives restarts, deduplicates polls, and accepts corrected records without
+  treating a reduction as a meter reset. New profiles appear after their first
+  completed charge. C371 supports this history path without enabling unverified
+  live controls. This does not identify the physically connected car or show
+  in-progress charging energy.
+
+- The Local (Modbus/TCP) mode of a three-phase PowerOcean now has a Modbus Control switch. It is always off after a restart. While it is on, the EcoFlow app is locked, and after you switch it off the inverter hands control back after about a minute.
+
+- The Local mode now has two numbers, Backup Reserve and Indicator Brightness. Each change is confirmed by reading the value back from the inverter, and a change the inverter does not take shows as an error. Both work with Modbus Control off.
+
+- The Local mode now has a diagnostic binary sensor, Modbus Control Active, which shows whether the inverter itself reports that Modbus control is on.
+
+- On Home Assistant 2026.9 or newer, the Local connection uses the connection that Home Assistant shares between Modbus integrations. A second Modbus integration for the same inverter works beside it when both use the same host string. Older versions keep the integration's own connection.
+
+### Changed
+
+- The integration now declares the Home Assistant Modbus integration as an optional dependency, which makes Home Assistant install the Modbus packages for every installation.
+
+## [1.23.0] - 2026-10-02
 
 ### Fixed
 
@@ -25,17 +51,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Opt-in completed charging energy per vehicle profile for PowerPulse 2 with
-  account sign-in. Enable **Track completed PowerPulse charging energy by
-  vehicle** in integration options. Each profile gets a kWh total from completed
-  cloud orders; unassigned orders have a separate total. A local order ledger
-  survives restarts, deduplicates polls, and accepts corrected records without
-  treating a reduction as a meter reset. New profiles appear after their first
-  completed charge. C371 supports this history path without enabling unverified
-  live controls. This does not identify the physically connected car or show
-  in-progress charging energy.
-
-- The PowerOcean's feed-to-grid schedules are now in Home Assistant (beta.9). A schedule created in the EcoFlow app under "feed power to grid", a time of day during which the system exports a set power from the battery, gets the same four entities a charge schedule already has, on its own numbering: Feed Schedule N Enabled to switch it on and off, Feed Schedule N Export Power to set the watts, Feed Schedule N Window for the time of day (a feed-to-grid schedule can carry two windows, shown as `21:00-21:30, 22:00-23:00`), and Feed Schedule N Running. Until now these schedules were invisible: they live on a second task list the PowerOcean sends beside the charge schedules, and the integration read only the first. The list, the switch and the power change were mapped from one owner's recording on #381, in which he created a feed-to-grid schedule in the app, switched it off and on, changed its power, its windows and its repeat setting three ways, and deleted it again, every step acknowledged by the device and visible in the list it sent back; the frames the integration now sends are those bytes, compared exactly. The export power moves in 100 W steps from 100 W up to the system's own Feed Power Limit, which the integration already reads, and a write is refused rather than sent while that reading has not arrived. Creating and deleting a schedule stay in the app, as for the charge schedules. Two things are not on record and are said so in the entity reference: the device was not seen sending a fresh list on its own after a plain on or off, so the switch keeps the state it was set to until the next list arrives, and no schedule of this kind has yet been operated from Home Assistant on real hardware. Enhanced Mode only. (Ref #381)
+- The PowerOcean's feed-to-grid schedules are now in Home Assistant. A schedule created in the EcoFlow app under "feed power to grid", a time of day during which the system exports a set power from the battery, gets the same four entities a charge schedule already has, on its own numbering: Feed Schedule N Enabled to switch it on and off, Feed Schedule N Export Power to set the watts, Feed Schedule N Window for the time of day (a feed-to-grid schedule can carry two windows, shown as `21:00-21:30, 22:00-23:00`), and Feed Schedule N Running. Until now these schedules were invisible: they live on a second task list the PowerOcean sends beside the charge schedules, and the integration read only the first. The list, the switch and the power change were mapped from @paddy2k's recording on #381, in which he created a feed-to-grid schedule in the app, switched it off and on, changed its power, its windows and its repeat setting three ways, and deleted it again, every step acknowledged by the device and visible in the list it sent back; the frames the integration now sends are those bytes, compared exactly. The export power moves in 100 W steps from 100 W up to the system's own Feed Power Limit, which the integration already reads, and a write is refused rather than sent while that reading has not arrived. Creating and deleting a schedule stay in the app, as for the charge schedules. One thing is not on record and is said so in the entity reference: the device was not seen sending a fresh list on its own after a plain on or off, so the switch keeps the state it was set to until the next list arrives. @paddy2k then ran the schedule from Home Assistant on his own unit: the switch agreed with the app right after a flip and again after the app refreshed, Export Power matched with the schedule running and not running, and the Window text matched including a second window. Enhanced Mode only. (Ref #381)
 
 - A third way to connect a three-phase PowerOcean: Local (Modbus/TCP). It reads the inverter directly over your network with no EcoFlow account and no cloud, and it is read-only. EcoFlow support has to switch Modbus on for your inverter first, and the inverter serves one Modbus client at a time, so another tool holding the connection blocks it. It refreshes every 2 seconds, close to the pace of about once a second at which the inverter moves its power readings. A Local entry shows solar, home, grid and battery power, the battery charge level, grid frequency, the two solar strings, battery energy, battery capacity, backup reserve and the number of batteries online, plus the inverter's own lifetime counters for solar, grid import and grid export and a fault count. Those three lifetime counters are separate sensors from the cloud entry's solar and grid energy, which this integration adds up itself and which therefore sit thousands of kWh away from the inverter's counters, so the Energy Dashboard needs the Local ones chosen once when you switch. A PowerOcean entry that holds only that one inverter can be switched between cloud and Local from Reconfigure and keeps the readings both connections share under the same entities and history, while the entities only the cloud provides are unavailable in Local; an entry holding other devices of the same account cannot be switched. Per-pack charge levels are not read, because Modbus reports the level the app shows, up to 5 points below the battery level the cloud entry shows for the same pack. Grid phase voltage and current and the working mode read zero on the one inverter measured, so they are not created. Writing settings over Modbus is not part of this. Measured on that inverter over about 19 hours against its real-time connection: charge level within 1 percent, power on average within 7 W for solar, 11 W for battery, 17 W for grid and 25 W for home (single readings differ more when the load changes fast), battery charge and discharge counters within 0.01 kWh.
 

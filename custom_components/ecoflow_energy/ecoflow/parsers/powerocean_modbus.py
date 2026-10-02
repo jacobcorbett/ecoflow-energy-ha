@@ -1,4 +1,4 @@
-"""PowerOcean local Modbus register map (read-only).
+"""PowerOcean local Modbus register map.
 
 Turns the raw register blocks read by ``ecoflow/modbus_local.py`` into the
 sensor keys the PowerOcean entities already use. Offsets are the protocol
@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..modbus_local import (
+    BACKUP_RATIO_OFFSET,
+    BRIGHTNESS_OFFSET,
     decode_ascii,
     decode_f32_ws,
     decode_u16,
@@ -32,13 +34,18 @@ SETUP_BLOCKS: tuple[tuple[int, int], ...] = ((0x0000, 3), (0x0003, 8), (0x000B, 
 
 # (offset, register count), each block at most 125 registers.
 POLL_BLOCKS: tuple[tuple[int, int], ...] = (
-    (0x0206, 9),  # load, grid, solar, battery power, SoC
+    (0x0206, 13),  # load, grid, solar, battery power, SoC, system status
     (0x0217, 18),  # backup ratio ... battery capacity (0x0227-0x0228)
     (0x0251, 12),  # frequency, PV1/PV2/PV3 voltage, PV1/PV2 current
     (0x0800, 1),  # fault count
     (0x0820, 1),  # batteries online
     (0x0870, 98),  # lifetime energy counters up to 0x08D1
 )
+
+# Bit 11 of the system status word: the device reports that Modbus control is
+# active. Bits 4-6 are not decoded as a mode: the device shows an undocumented
+# value 7 there while Backup Reserve is above 0, and that is not an error.
+_CONTROL_ACTIVE_BIT = 11
 
 # Stage 1 supports the three-phase PowerOcean only (category 1, number 1).
 SUPPORTED_PRODUCT_CATEGORY = 1
@@ -60,7 +67,9 @@ _REGISTERS: tuple[_Register, ...] = (
     _Register("solar_w", 0x020A, 2, decode_f32_ws),
     _Register("batt_w", 0x020C, 2, decode_f32_ws),
     _Register("soc_pct", 0x020E, 1, decode_u16),
-    _Register("ems_backup_ratio_pct", 0x0217, 1, decode_u16),
+    _Register("local_system_status", 0x0211, 2, decode_u32_ws),
+    _Register("ems_backup_ratio_pct", BACKUP_RATIO_OFFSET, 1, decode_u16),
+    _Register("local_indicator_brightness_pct", BRIGHTNESS_OFFSET, 1, decode_u16),
     _Register("ems_total_battery_capacity_wh", 0x0227, 2, decode_u32_ws),
     _Register("pcs_ac_freq_hz", 0x0251, 2, decode_f32_ws),
     _Register("mppt_pv1_voltage_v", 0x0253, 2, decode_f32_ws),
@@ -114,6 +123,12 @@ def parse_registers(blocks: Mapping[int, bytes]) -> dict[str, Any]:
         if register.counter and value <= 0:
             continue
         result[register.key] = value
+
+    # Derived from the status word, and only when the word was read: a frame
+    # without it says nothing about control, so no False is invented.
+    status = result.get("local_system_status")
+    if status is not None:
+        result["modbus_control_active"] = bool((status >> _CONTROL_ACTIVE_BIT) & 1)
 
     return remap_proto_keys(result)
 
