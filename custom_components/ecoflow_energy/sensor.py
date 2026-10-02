@@ -23,7 +23,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     AUTH_METHOD_APP,
     CONF_AUTH_METHOD,
-    CONF_DEVICES,
     CONF_VEHICLE_ENERGY,
     DELTA2MAX_SENSORS,
     DELTA3_SENSORS,
@@ -136,31 +135,38 @@ async def async_setup_entry(
         entry.data.get(CONF_VEHICLE_ENERGY)
         and entry.data.get(CONF_AUTH_METHOD) == AUTH_METHOD_APP
     ):
-        from .charging_history import async_setup_charging_history
-        from .ecoflow.const import get_device_type
+        from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-        for device in entry.data.get(CONF_DEVICES, []):
-            serial = device["sn"]
-            if (
-                not serial.startswith("C371")
-                and get_device_type(device.get("product_name") or "", serial)
-                != DEVICE_TYPE_POWERPULSE2
-            ):
-                continue
-            history_source = coordinators.get(serial)
-            info = (
-                history_source.device_info
-                if history_source is not None
-                else DeviceInfo(
-                    identifiers={(DOMAIN, serial)},
-                    manufacturer="EcoFlow",
-                    model="PowerPulse 2",
-                    name="PowerPulse 2",
+        from .charging_history import (
+            async_register_history_stores,
+            async_setup_charging_history,
+        )
+        from .const import CONF_EMAIL, CONF_PASSWORD
+        from .ecoflow.app_api import AppApiClient
+
+        chargers = [
+            source
+            for source in coordinators.values()
+            if source.device_type == DEVICE_TYPE_POWERPULSE2
+        ]
+        if chargers:
+            api = AppApiClient(
+                async_get_clientsession(hass),
+                entry.data[CONF_EMAIL],
+                entry.data[CONF_PASSWORD],
+            )
+            await async_register_history_stores(
+                hass, entry, [source.device_sn for source in chargers]
+            )
+            for charger in chargers:
+                await async_setup_charging_history(
+                    hass,
+                    entry,
+                    charger.device_sn,
+                    charger.device_info,
+                    async_add_entities,
+                    api,
                 )
-            )
-            await async_setup_charging_history(
-                hass, entry, serial, info, async_add_entities
-            )
 
 
 @callback

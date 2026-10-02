@@ -73,7 +73,7 @@ def test_active_order_is_not_added_and_duplicates_are_idempotent():
     assert merge_orders({}, [order(endTime="")], SERIAL) == {}
     ledger = merge_orders({}, [order(), order()], SERIAL)
     assert len(ledger) == 1
-    with pytest.raises(ValueError, match="Conflicting"):
+    with pytest.raises(ValueError, match="conflicting"):
         merge_orders({}, [order(), order(energy=12)], SERIAL)
 
 
@@ -120,7 +120,7 @@ async def test_paging_and_auth_retry():
         response([order()], 2, True),
         response([order("b")], 2),
     ]
-    api = AppApiClient(session, "dummy@example.com", "dummy")
+    api = AppApiClient(session, "test@example.com", "test_password")
     api._token = "expired"
     api.login = AsyncMock(return_value=True)
     rows = await api.get_powerpulse_orders(SERIAL)
@@ -143,7 +143,83 @@ async def test_paging_and_auth_retry():
 async def test_partial_or_rejected_history_is_not_empty_history(pages):
     session = MagicMock()
     session.get.side_effect = pages
-    api = AppApiClient(session, "dummy@example.com", "dummy")
-    api._token = "dummy"
+    api = AppApiClient(session, "test@example.com", "test_password")
+    api._token = "test_password"
     with pytest.raises(ValueError):
         await api.get_powerpulse_orders(SERIAL)
+
+
+def test_invalid_field_logging_is_sanitized(caplog):
+    import logging
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(ValueError):
+        merge_orders({}, [order(chargedEnergy="private-invalid-value")], SERIAL)
+    assert "chargedEnergy" in caplog.text
+    assert "private-invalid-value" not in caplog.text
+    assert SERIAL not in caplog.text
+    assert "Family EV" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_history_login_failure_backs_off_for_all_chargers():
+    from unittest.mock import patch
+
+    from ecoflow_energy.ecoflow.app_api import HistoryLoginError
+
+    session = MagicMock()
+    api = AppApiClient(session, "test@example.com", "test_password")
+    api.login = AsyncMock(return_value=False)
+    with (
+        patch("ecoflow_energy.ecoflow.app_api.time.monotonic", return_value=100),
+        pytest.raises(HistoryLoginError),
+    ):
+        await api.get_powerpulse_orders(SERIAL)
+    with (
+        patch("ecoflow_energy.ecoflow.app_api.time.monotonic", return_value=3699),
+        pytest.raises(HistoryLoginError),
+    ):
+        await api.get_powerpulse_orders("C376TEST0002")
+    api.login.assert_awaited_once()
+    session.get.assert_not_called()
+    api.login.return_value = True
+    session.get.return_value = response([], 0)
+    with patch("ecoflow_energy.ecoflow.app_api.time.monotonic", return_value=3700):
+        assert await api.get_powerpulse_orders(SERIAL) == []
+    assert api.login.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_concurrent_chargers_share_one_history_login():
+    import asyncio
+
+    session = MagicMock()
+    session.get.return_value = response([], 0)
+    api = AppApiClient(session, "test@example.com", "test_password")
+
+    async def login():
+        await asyncio.sleep(0)
+        api._token = "test_token"
+        return True
+
+    api.login = AsyncMock(side_effect=login)
+    assert await asyncio.gather(
+        api.get_powerpulse_orders(SERIAL), api.get_powerpulse_orders("C376TEST0002")
+    ) == [[], []]
+    api.login.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_rejected_refreshed_session_backs_off():
+    from ecoflow_energy.ecoflow.app_api import HistoryLoginError
+
+    session = MagicMock()
+    session.get.return_value = response([], 0, code="401", status=401)
+    api = AppApiClient(session, "test@example.com", "test_password")
+    api._token = "expired"
+    api.login = AsyncMock(return_value=True)
+    with pytest.raises(HistoryLoginError):
+        await api.get_powerpulse_orders(SERIAL)
+    with pytest.raises(HistoryLoginError):
+        await api.get_powerpulse_orders(SERIAL)
+    api.login.assert_awaited_once()
+    assert session.get.call_count == 2

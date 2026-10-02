@@ -2520,6 +2520,9 @@
       "vehicle_energy": {
         "name": "{vehicle} completed charging energy"
       },
+      "unnamed_vehicle_energy": {
+        "name": "Unnamed vehicle completed charging energy"
+      },
       "other_vehicle_energy": {
         "name": "Unassigned completed charging energy"
       }

@@ -12,8 +12,9 @@ All notable changes to this project will be documented in this file.
   cloud orders; unassigned orders have a separate total. A local order ledger
   survives restarts, deduplicates polls, and accepts corrected records without
   treating a reduction as a meter reset. New profiles appear after their first
-  completed charge. C371 supports this history path without enabling unverified
-  live controls. This does not identify the physically connected car or show
+  completed charge. Saved totals restore before the initial background fetch;
+  history readers share a sign-in and back off after authentication failures.
+  This does not identify the physically connected car or show
   in-progress charging energy.
 
 - The Local (Modbus/TCP) mode of a three-phase PowerOcean now has a Modbus Control switch. It is always off after a restart. While it is on, the EcoFlow app is locked, and after you switch it off the inverter hands control back after about a minute.
