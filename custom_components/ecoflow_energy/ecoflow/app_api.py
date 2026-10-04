@@ -39,6 +39,10 @@ class HistoryDeferred(ValueError):
         self.authentication = authentication
 
 
+class HistoryStorageError(OSError):
+    """History persistence could not be verified; do not spend the read budget."""
+
+
 class HistoryLoginError(ValueError):
     """History sign-in failed; callers must back off instead of retrying per charger."""
 
@@ -150,15 +154,26 @@ class AppApiClient:
         from .charging_history import identity
 
         async with self._history_lock:
+            now = time.time()
             state: dict[str, Any] = {"last_reads": {}, "retry_after": 0.0}
             if self._history_store is not None:
                 saved = await self._history_store.async_load()
                 if saved is not None:
                     if not self._valid_history_limits(saved):
-                        raise ValueError("Invalid stored charging history limits")
-                    state = saved
-                self._history_retry_after = state["retry_after"]
-            now = time.time()
+                        state = {"last_reads": {}, "retry_after": now + 3600}
+                    else:
+                        state = {
+                            "last_reads": {
+                                key: min(stamp, now)
+                                for key, stamp in saved["last_reads"].items()
+                            },
+                            "retry_after": min(saved["retry_after"], now + 3600),
+                        }
+                    if state != saved:
+                        await self._save_history_limits(state)
+                self._history_retry_after = min(
+                    max(self._history_retry_after, state["retry_after"]), now + 3600
+                )
             if now < self._history_retry_after:
                 if self._history_store is not None:
                     raise HistoryDeferred(self._history_retry_after - now, True)
@@ -168,24 +183,35 @@ class AppApiClient:
                 deadline = state["last_reads"].get(key, 0) + 300
                 if now < deadline:
                     raise HistoryDeferred(deadline - now, False)
-                # Persist before any network activity. Failure to save fails closed.
+                # Verify the write before any network activity: HA may swallow errors.
                 state["last_reads"][key] = now
-                await self._history_store.async_save(state)
+                await self._save_history_limits(state)
             try:
                 return await self._get_powerpulse_orders(serial)
             except HistoryLoginError:
                 self._history_retry_after = time.time() + 3600
                 if self._history_store is not None:
                     state["retry_after"] = self._history_retry_after
-                    await self._history_store.async_save(state)
+                    await self._save_history_limits(state)
                 raise
+
+    async def _save_history_limits(self, state: dict[str, Any]) -> None:
+        """HA Store may log a failed write and return normally."""
+        assert self._history_store is not None
+        await self._history_store.async_save(state)
+        if await self._history_store.async_load() != state:
+            raise HistoryStorageError("Could not persist charging history limits")
 
     @staticmethod
     def _valid_history_limits(saved: dict[str, Any]) -> bool:
         """Reject damaged limits instead of silently bypassing the read budget."""
 
         def timestamp(value: Any) -> bool:
-            return type(value) in (int, float) and math.isfinite(value) and value >= 0
+            return (
+                type(value) in (int, float)
+                and value >= 0
+                and (isinstance(value, int) or math.isfinite(value))
+            )
 
         return (
             isinstance(saved, dict)

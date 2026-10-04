@@ -16,6 +16,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.storage import Store
@@ -26,13 +27,14 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .const import CONF_DEVICES, DOMAIN
-from .ecoflow.app_api import AppApiClient, HistoryDeferred
+from .ecoflow.app_api import AppApiClient, HistoryDeferred, HistoryLoginError
 from .ecoflow.charging_history import (
     identity,
     merge_orders,
     valid_saved_ledger,
     vehicle_totals,
 )
+from .ecoflow.const import device_log_tag
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,17 +56,24 @@ class ChargingHistoryCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]
         self.serial = serial
         self.api = api
         self.store: Store[dict[str, Any]] = Store(
-            hass, 1, f"{DOMAIN}_charging_history_{identity(serial)}"
+            hass, 1, f"{DOMAIN}_charging_history_{entry.entry_id}_{identity(serial)}"
         )
         self.orders: dict[str, dict[str, Any]] = {}
         self.data = {}
+        self.history_available = True
+        self._restore_failed = False
 
     async def async_restore(self) -> None:
         """Restore the ledger, including vehicles no longer returned by cloud."""
         try:
             saved = await self.store.async_load()
-        except (OSError, ValueError):
-            _LOGGER.warning("Could not restore charging ledger; starting empty")
+        except (OSError, ValueError, HomeAssistantError):
+            self._restore_failed = True
+            self.history_available = False
+            _LOGGER.warning(
+                "Could not restore charging ledger for %s; preserving store",
+                device_log_tag(self.serial),
+            )
             return
         if saved is None:
             return
@@ -76,6 +85,8 @@ class ChargingHistoryCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         """An incomplete fetch never publishes or persists partial totals."""
+        if self._restore_failed:
+            raise UpdateFailed("Charging ledger could not be loaded; preserving store")
         try:
             async with asyncio.timeout(60):
                 rows = await self.api.get_powerpulse_orders(self.serial)
@@ -87,17 +98,31 @@ class ChargingHistoryCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]
             }
             totals.update(vehicle_totals(orders))
             if orders != self.orders or totals != self.data:
-                await self.store.async_save({"orders": orders, "vehicles": totals})
+                saved = {"orders": orders, "vehicles": totals}
+                await self.store.async_save(saved)
+                if await self.store.async_load() != saved:
+                    raise OSError("Charging ledger write could not be verified")
             self.orders = orders
+            self.history_available = True
             return totals
         except HistoryDeferred as err:
-            self.update_interval = timedelta(seconds=max(1, err.delay))
+            self.update_interval = timedelta(seconds=min(3600, max(1, err.delay)))
             if err.authentication:
-                raise UpdateFailed("Charging history sign-in is backed off") from err
+                self._mark_unavailable("Charging history sign-in is backed off")
             return self.data
-        except (aiohttp.ClientError, TimeoutError, ValueError, OSError) as err:
-            # URLs and bodies can contain serials, account IDs and profile names.
-            raise UpdateFailed("Could not update completed charging history") from err
+        except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+            if isinstance(err, HistoryLoginError):
+                self.update_interval = timedelta(hours=1)
+            self._mark_unavailable("Could not read completed charging history")
+            return self.data
+        except (OSError, HomeAssistantError) as err:
+            raise UpdateFailed("Could not persist completed charging history") from err
+
+    def _mark_unavailable(self, message: str) -> None:
+        """Warn once per failure transition without exposing cloud response data."""
+        if self.history_available:
+            _LOGGER.warning("%s (%s)", message, device_log_tag(self.serial))
+        self.history_available = False
 
 
 class VehicleEnergySensor(CoordinatorEntity[ChargingHistoryCoordinator], SensorEntity):
@@ -133,6 +158,11 @@ class VehicleEnergySensor(CoordinatorEntity[ChargingHistoryCoordinator], SensorE
         self._attr_translation_placeholders = {
             "vehicle": coordinator.data[vehicle]["name"]
         }
+
+    @property
+    def available(self) -> bool:
+        """A deferred or failed cloud read must not present stale totals as live."""
+        return super().available and self.coordinator.history_available
 
     @property
     def native_value(self) -> float | None:
@@ -191,7 +221,11 @@ async def async_register_history_stores(
 ) -> None:
     """Remember ledgers even if a charger is later deselected from the entry."""
     index = _history_index(hass, entry)
-    saved = await index.async_load()
+    try:
+        saved = await index.async_load()
+    except (OSError, ValueError, HomeAssistantError):
+        _LOGGER.warning("Could not load charging history index; preserving store")
+        return
     hashes = (
         {
             s
@@ -210,7 +244,15 @@ async def async_register_history_stores(
 async def async_remove_history_stores(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Deleting the entry deletes its retained charging history, not disabling it."""
     index = _history_index(hass, entry)
-    saved = await index.async_load()
+    await history_limits_store(hass, entry).async_remove()
+    try:
+        saved = await index.async_load()
+    except (OSError, ValueError, HomeAssistantError):
+        _LOGGER.warning(
+            "Could not load charging history index; "
+            "only selected ledgers can be removed"
+        )
+        saved = None
     hashes = (
         {
             s
@@ -228,9 +270,10 @@ async def async_remove_history_stores(hass: HomeAssistant, entry: ConfigEntry) -
         if isinstance(d.get("sn"), str)
     )
     for hashed in hashes:
-        await Store(hass, 1, f"{DOMAIN}_charging_history_{hashed}").async_remove()
+        await Store(
+            hass, 1, f"{DOMAIN}_charging_history_{entry.entry_id}_{hashed}"
+        ).async_remove()
     await index.async_remove()
-    await history_limits_store(hass, entry).async_remove()
 
 
 def history_limits_store(

@@ -34,9 +34,11 @@ DIAGNOSTIC_SENSOR_KEYS = {"mqtt_status", "connection_mode"}
 
 
 # Runtime-discovered vehicle sensors in charging_history.py.
-def _vehicle_sensor_keys() -> set[str]:
+def _vehicle_sensor_keys(source: str | None = None) -> set[str]:
     tree = ast.parse(
-        Path("custom_components/ecoflow_energy/charging_history.py").read_text()
+        source
+        if source is not None
+        else Path("custom_components/ecoflow_energy/charging_history.py").read_text()
     )
     keys: set[str] = set()
 
@@ -47,12 +49,25 @@ def _vehicle_sensor_keys() -> set[str]:
             return values(node.body) | values(node.orelse)
         raise AssertionError("Unsupported translation-key expression")
 
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign) and any(
+    def is_key(target: ast.expr) -> bool:
+        return (
             isinstance(target, ast.Attribute) and target.attr == "_attr_translation_key"
-            for target in node.targets
+        ) or (isinstance(target, ast.Name) and target.id == "_attr_translation_key")
+
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Assign)
+            and any(is_key(t) for t in node.targets)
+            or isinstance(node, ast.AnnAssign)
+            and is_key(node.target)
+            and node.value
         ):
+            assert node.value is not None
             keys.update(values(node.value))
+        elif isinstance(node, ast.Call):
+            for keyword in node.keywords:
+                if keyword.arg == "translation_key":
+                    keys.update(values(keyword.value))
     assert keys, "No vehicle translation keys discovered"
     return keys
 
@@ -195,3 +210,15 @@ def test_charging_current_setpoint_is_named_as_a_setpoint() -> None:
         )["entity"]
         assert entity["sensor"]["ev_charge_current_a"]["name"] == expected
         assert entity["number"]["ev_charge_current_a"]["name"] == expected
+@pytest.mark.parametrize(
+    "source",
+    [
+        'class Sensor: _attr_translation_key = "new_key"',
+        'class Sensor: _attr_translation_key: str = "new_key"',
+        'self._attr_translation_key: str = "new_key"',
+        'self._attr_translation_key = "new_key"',
+        'SensorEntityDescription(key="energy", translation_key="new_key")',
+    ],
+)
+def test_vehicle_translation_discovery_shapes(source):
+    assert _vehicle_sensor_keys(source) == {"new_key"}
