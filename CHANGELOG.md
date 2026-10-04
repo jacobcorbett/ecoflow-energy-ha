@@ -6,7 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Read-only PowerPulse 2 support for serial prefix `C371`, using its own
+  heartbeat telemetry. Recognise the vehicle-suspended plug state.
+  Write controls remain unavailable on this variant pending hardware validation.
   C371 support rests on @jacobcorbett's recording of a suspended session
+  (plug status `5` at 0 W). Continuous updates and charging power/energy
+  validation are still pending. (Ref #7)
 
 - The RIVER 3 (`R655`) is supported, read-only and in Enhanced Mode only: battery level, input, output and AC input power, the AC input and output energy counters, the charge state, remaining time, and the battery's health, cell and temperature readings. Mapped from @nicolklup's diagnostics download of three units and his own decoding, which showed the RIVER 3 sends the Delta 3 frames; the values match the app. It has no switches, numbers or selects, because nothing recorded so far shows that a setting written to it is accepted. The DC and USB outputs are not read yet: on one unit the app showed 2 W of DC output while the matching Delta 3 field read 0 W, so this model reports those ports somewhere the Delta 3 message does not cover, and no unit had a USB load. The RIVER 3 Plus is not included. The remaining-time sensors read unknown while the unit reports itself idle, which all three units did.
 
