@@ -170,12 +170,12 @@ async def test_history_login_failure_backs_off_for_all_chargers():
     api = AppApiClient(session, "test@example.com", "test_password")
     api.login = AsyncMock(return_value=False)
     with (
-        patch("ecoflow_energy.ecoflow.app_api.time.monotonic", return_value=100),
+        patch("ecoflow_energy.ecoflow.app_api.time.time", return_value=100),
         pytest.raises(HistoryLoginError),
     ):
         await api.get_powerpulse_orders(SERIAL)
     with (
-        patch("ecoflow_energy.ecoflow.app_api.time.monotonic", return_value=3699),
+        patch("ecoflow_energy.ecoflow.app_api.time.time", return_value=3699),
         pytest.raises(HistoryLoginError),
     ):
         await api.get_powerpulse_orders("C376TEST0002")
@@ -183,7 +183,7 @@ async def test_history_login_failure_backs_off_for_all_chargers():
     session.get.assert_not_called()
     api.login.return_value = True
     session.get.return_value = response([], 0)
-    with patch("ecoflow_energy.ecoflow.app_api.time.monotonic", return_value=3700):
+    with patch("ecoflow_energy.ecoflow.app_api.time.time", return_value=3700):
         assert await api.get_powerpulse_orders(SERIAL) == []
     assert api.login.await_count == 2
 
@@ -223,3 +223,52 @@ async def test_rejected_refreshed_session_backs_off():
         await api.get_powerpulse_orders(SERIAL)
     api.login.assert_awaited_once()
     assert session.get.call_count == 2
+
+
+def test_newest_nonempty_name_wins_independent_of_input_order():
+    older = order("old", name="Old", endTime="2026-10-01 10:00:00")
+    newer = order("new", name="New", endTime="2026-10-02 10:00:00")
+    blank = order("blank", name="", endTime="2026-10-03 10:00:00")
+    for rows in ([newer, older, blank], [blank, older, newer]):
+        assert (
+            vehicle_totals(merge_orders({}, rows, SERIAL))[identity("profile-a")][
+                "name"
+            ]
+            == "New"
+        )
+
+
+@pytest.mark.parametrize("end", [None, 0, "0", ""])
+def test_unfinished_order_sentinels(end):
+    assert merge_orders({}, [order(endTime=end)], SERIAL) == {}
+
+
+@pytest.mark.parametrize("field", ["orderId", "vehicleId"])
+@pytest.mark.parametrize("value", [True, False])
+def test_boolean_identifiers_are_invalid(field, value):
+    with pytest.raises(ValueError, match=field):
+        merge_orders({}, [order(**{field: value})], SERIAL)
+
+
+@pytest.mark.parametrize("status,code", [(401, "0"), (200, "401")])
+async def test_auth_status_and_body_code_independently(status, code):
+    session = MagicMock()
+    session.get.side_effect = [
+        response([], 0, code=code, status=status),
+        response([], 0),
+    ]
+    api = AppApiClient(session, "test@example.com", "test_password")
+    api._token = "expired"
+    api.login = AsyncMock(return_value=True)
+    assert await api.get_powerpulse_orders(SERIAL) == []
+    api.login.assert_awaited_once()
+    assert session.get.call_count == 2
+
+
+async def test_changing_total_is_the_pagination_failure():
+    session = MagicMock()
+    session.get.side_effect = [response([order()], 2, True), response([order("b")], 3)]
+    api = AppApiClient(session, "test@example.com", "test_password")
+    api._token = "test_token"
+    with pytest.raises(ValueError, match="changed during pagination"):
+        await api.get_powerpulse_orders(SERIAL)

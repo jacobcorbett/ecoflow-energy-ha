@@ -17,6 +17,7 @@ types are covered automatically.
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from pathlib import Path
@@ -30,12 +31,33 @@ LANGS = ("en", "de")
 
 # Diagnostic sensors created directly in sensor.py (not definition-driven)
 DIAGNOSTIC_SENSOR_KEYS = {"mqtt_status", "connection_mode"}
+
+
 # Runtime-discovered vehicle sensors in charging_history.py.
-VEHICLE_SENSOR_KEYS = {
-    "vehicle_energy",
-    "other_vehicle_energy",
-    "unnamed_vehicle_energy",
-}
+def _vehicle_sensor_keys() -> set[str]:
+    tree = ast.parse(
+        Path("custom_components/ecoflow_energy/charging_history.py").read_text()
+    )
+    keys: set[str] = set()
+
+    def values(node: ast.expr) -> set[str]:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return {node.value}
+        if isinstance(node, ast.IfExp):
+            return values(node.body) | values(node.orelse)
+        raise AssertionError("Unsupported translation-key expression")
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Attribute) and target.attr == "_attr_translation_key"
+            for target in node.targets
+        ):
+            keys.update(values(node.value))
+    assert keys, "No vehicle translation keys discovered"
+    return keys
+
+
+VEHICLE_SENSOR_KEYS = _vehicle_sensor_keys()
 
 
 def _collect(pattern: str) -> dict[str, Any]:

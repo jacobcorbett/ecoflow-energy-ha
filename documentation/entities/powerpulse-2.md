@@ -153,8 +153,10 @@ Saved totals and entities restore before the first cloud fetch runs in the
 background, so a slow history request does not hold up sensor setup. History is
 polled every five minutes, independently of the live MQTT connection. All history
 readers in an entry share one API client and sign-in. Failed sign-in or a rejected
-refreshed session pauses authentication attempts for one hour across those readers;
-reloading the entry allows an earlier retry after credentials are fixed.
+refreshed session pauses authentication attempts for one hour across those readers.
+The last read time for each charger and the shared authentication backoff deadline
+are saved per entry as wall-clock timestamps, so reloads and restarts do not reset
+either limit. Restored totals remain visible while waiting for the next allowed read.
 Every page must succeed before any totals change. Requests use the verified
 one-based `page` and `size` parameters. Inconsistent pagination, malformed records,
 API failures, a 60-second overall timeout and the 100-page safety limit mark

@@ -144,6 +144,7 @@ async def async_setup_entry(
         from .charging_history import (
             async_register_history_stores,
             async_setup_charging_history,
+            history_limits_store,
         )
         from .const import CONF_EMAIL, CONF_PASSWORD
         from .ecoflow.app_api import AppApiClient
@@ -158,6 +159,7 @@ async def async_setup_entry(
                 async_get_clientsession(hass),
                 entry.data[CONF_EMAIL],
                 entry.data[CONF_PASSWORD],
+                history_store=history_limits_store(hass, entry),
             )
             await async_register_history_stores(
                 hass, entry, [source.device_sn for source in chargers]

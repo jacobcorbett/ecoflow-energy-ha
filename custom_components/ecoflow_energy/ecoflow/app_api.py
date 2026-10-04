@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
-from typing import Any
+from typing import Any, Protocol
 
 import aiohttp
 
@@ -20,6 +21,22 @@ from .enhanced_auth import enhanced_login, get_enhanced_credentials
 _LOGGER = logging.getLogger(__name__)
 
 _DEVICE_LIST_PATH = "/iot-service/user/device"
+
+
+class HistoryStateStore(Protocol):
+    """Persistence supplied by the host, without a Home Assistant dependency."""
+
+    async def async_load(self) -> dict[str, Any] | None: ...
+    async def async_save(self, data: dict[str, Any]) -> None: ...
+
+
+class HistoryDeferred(ValueError):
+    """A persisted deadline prevents another request yet."""
+
+    def __init__(self, delay: float, authentication: bool) -> None:
+        super().__init__("Charging history request deferred")
+        self.delay = delay
+        self.authentication = authentication
 
 
 class HistoryLoginError(ValueError):
@@ -38,6 +55,7 @@ class AppApiClient:
         session: aiohttp.ClientSession,
         email: str,
         password: str,
+        history_store: HistoryStateStore | None = None,
     ) -> None:
         self._session = session
         self._email = email
@@ -47,6 +65,7 @@ class AppApiClient:
         self._base_url: str = IOT_API_BASE
         self._history_lock = asyncio.Lock()
         self._history_retry_after = 0.0
+        self._history_store = history_store
 
     @property
     def token(self) -> str | None:
@@ -128,14 +147,58 @@ class AppApiClient:
 
     async def get_powerpulse_orders(self, serial: str) -> list[dict[str, Any]]:
         """Serialize entry-wide reads and back off failed sign-in for an hour."""
+        from .charging_history import identity
+
         async with self._history_lock:
-            if time.monotonic() < self._history_retry_after:
+            state: dict[str, Any] = {"last_reads": {}, "retry_after": 0.0}
+            if self._history_store is not None:
+                saved = await self._history_store.async_load()
+                if saved is not None:
+                    if not self._valid_history_limits(saved):
+                        raise ValueError("Invalid stored charging history limits")
+                    state = saved
+                self._history_retry_after = state["retry_after"]
+            now = time.time()
+            if now < self._history_retry_after:
+                if self._history_store is not None:
+                    raise HistoryDeferred(self._history_retry_after - now, True)
                 raise HistoryLoginError("Charging history sign-in is backed off")
+            key = identity(serial)
+            if self._history_store is not None:
+                deadline = state["last_reads"].get(key, 0) + 300
+                if now < deadline:
+                    raise HistoryDeferred(deadline - now, False)
+                # Persist before any network activity. Failure to save fails closed.
+                state["last_reads"][key] = now
+                await self._history_store.async_save(state)
             try:
                 return await self._get_powerpulse_orders(serial)
             except HistoryLoginError:
-                self._history_retry_after = time.monotonic() + 3600
+                self._history_retry_after = time.time() + 3600
+                if self._history_store is not None:
+                    state["retry_after"] = self._history_retry_after
+                    await self._history_store.async_save(state)
                 raise
+
+    @staticmethod
+    def _valid_history_limits(saved: dict[str, Any]) -> bool:
+        """Reject damaged limits instead of silently bypassing the read budget."""
+
+        def timestamp(value: Any) -> bool:
+            return type(value) in (int, float) and math.isfinite(value) and value >= 0
+
+        return (
+            isinstance(saved, dict)
+            and isinstance(saved.get("last_reads"), dict)
+            and timestamp(saved.get("retry_after"))
+            and all(
+                isinstance(key, str)
+                and len(key) == 64
+                and all(c in "0123456789abcdef" for c in key)
+                and timestamp(value)
+                for key, value in saved["last_reads"].items()
+            )
+        )
 
     async def _get_powerpulse_orders(self, serial: str) -> list[dict[str, Any]]:
         """Read every completed-order page, or fail without partial accounting.

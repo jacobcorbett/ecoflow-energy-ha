@@ -366,6 +366,7 @@ async def test_sensor_platform_shares_history_client(hass):
     ) as setup:
         await sensor.async_setup_entry(hass, config, add_entities_collector([]))
     assert setup.await_count == 2
+    assert setup.call_args_list[0].args[-1]._history_store is not None
     assert setup.call_args_list[0].args[-1] is setup.call_args_list[1].args[-1]
     for source in sources.values():
         await source.async_shutdown()
@@ -410,3 +411,241 @@ async def test_entry_unload_cancels_initial_history_fetch(hass):
         await started.wait()
         assert await hass.config_entries.async_unload(config.entry_id)
         await asyncio.wait_for(cancelled.wait(), 1)
+
+
+@pytest.mark.parametrize("enabled", [None, False])
+async def test_absent_or_false_option_never_sets_up_or_fetches_history(hass, enabled):
+    from custom_components.ecoflow_energy import sensor
+    from custom_components.ecoflow_energy.coordinator import EcoFlowDeviceCoordinator
+
+    data = {
+        "auth_method": "app",
+        "email": "test@example.com",
+        "password": "test_password",
+    }
+    if enabled is not None:
+        data["powerpulse_vehicle_energy"] = enabled
+    config = MockConfigEntry(domain=DOMAIN, data=data)
+    config.add_to_hass(hass)
+    source = EcoFlowDeviceCoordinator(
+        hass, config, {"sn": SERIAL, "device_type": "powerpulse2"}
+    )
+    hass.data.setdefault(DOMAIN, {})[config.entry_id] = {SERIAL: source}
+    with (
+        patch(
+            "custom_components.ecoflow_energy.charging_history.async_setup_charging_history",
+            new_callable=AsyncMock,
+        ) as setup,
+        patch.object(
+            AppApiClient, "get_powerpulse_orders", new_callable=AsyncMock
+        ) as fetch,
+    ):
+        await sensor.async_setup_entry(hass, config, add_entities_collector([]))
+        await hass.async_block_till_done(wait_background_tasks=True)
+    setup.assert_not_awaited()
+    fetch.assert_not_awaited()
+    await source.async_shutdown()
+
+
+async def test_history_selection_uses_device_type_only(hass):
+    from custom_components.ecoflow_energy import sensor
+    from custom_components.ecoflow_energy.coordinator import EcoFlowDeviceCoordinator
+
+    config = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "auth_method": "app",
+            "email": "test@example.com",
+            "password": "test_password",
+            "powerpulse_vehicle_energy": True,
+        },
+    )
+    config.add_to_hass(hass)
+    sources = {
+        sn: EcoFlowDeviceCoordinator(hass, config, {"sn": sn, "device_type": kind})
+        for sn, kind in [
+            ("C376TEST0002", "powerpulse2"),
+            (SERIAL, "unknown"),
+            ("R351TEST0001", "delta2max"),
+        ]
+    }
+    hass.data.setdefault(DOMAIN, {})[config.entry_id] = sources
+    with patch(
+        "custom_components.ecoflow_energy.charging_history.async_setup_charging_history",
+        new_callable=AsyncMock,
+    ) as setup:
+        await sensor.async_setup_entry(hass, config, add_entities_collector([]))
+    assert [call.args[2] for call in setup.call_args_list] == ["C376TEST0002"]
+    for source in sources.values():
+        await source.async_shutdown()
+
+
+async def test_profile_rename_keeps_identity_and_creates_no_entity(hass):
+    config = entry(hass)
+    client = api(hass)
+    client.get_powerpulse_orders = AsyncMock(return_value=[record(name="Before")])
+    added: list[VehicleEnergySensor] = []
+    coord = await async_setup_charging_history(
+        hass,
+        config,
+        SERIAL,
+        DeviceInfo(identifiers={(DOMAIN, SERIAL)}),
+        add_entities_collector(added),
+        client,
+    )
+    await hass.async_block_till_done(wait_background_tasks=True)
+    uid = added[0].unique_id
+    client.get_powerpulse_orders.return_value = [record(name="After")]
+    await coord.async_refresh()
+    assert len(added) == 1
+    assert added[0].unique_id == uid
+    assert added[0].extra_state_attributes["profile_name"] == "After"
+    # Recreating the entity catches implementations that use its discovery name.
+    restored = ChargingHistoryCoordinator(hass, config, SERIAL, client)
+    await restored.async_restore()
+    after = VehicleEnergySensor(
+        restored, identity("profile-a"), DeviceInfo(identifiers={(DOMAIN, SERIAL)})
+    )
+    assert after.unique_id == uid
+    await coord.async_shutdown()
+    await restored.async_shutdown()
+
+
+@pytest.mark.parametrize("corruption", ["energy", "ended", "totals"])
+async def test_corrupt_saved_order_or_inconsistent_totals_refused(
+    hass, caplog, corruption
+):
+    from custom_components.ecoflow_energy.ecoflow.charging_history import (
+        merge_orders,
+        vehicle_totals,
+    )
+
+    orders = merge_orders({}, [record()], SERIAL)
+    saved = {"orders": orders, "vehicles": vehicle_totals(orders)}
+    if corruption == "energy":
+        orders[identity("a")]["energy_wh"] = "16004"
+    elif corruption == "ended":
+        orders[identity("a")]["ended"] = "private-invalid-date"
+    else:
+        saved["vehicles"][identity("profile-a")]["energy_wh"] += 1
+    coord = ChargingHistoryCoordinator(hass, entry(hass), SERIAL, api(hass))
+    with patch.object(coord.store, "async_load", return_value=saved):
+        await coord.async_restore()
+    assert coord.orders == {}
+    assert coord.data == {}
+    assert "Invalid stored charging ledger; starting empty" in caplog.text
+    assert "private-invalid-date" not in caplog.text
+    await coord.async_shutdown()
+
+
+@pytest.mark.parametrize(
+    "mode,submitted,expected",
+    [("standard", True, False), ("enhanced", False, False), ("enhanced", None, True)],
+)
+async def test_options_disable_and_preserve_history(hass, mode, submitted, expected):
+    from custom_components.ecoflow_energy.config_flow import EcoFlowOptionsFlow
+
+    config = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "auth_method": "app",
+            "mode": "enhanced",
+            "email": "test@example.com",
+            "password": "test_password",
+            "powerpulse_vehicle_energy": True,
+            "devices": [],
+        },
+    )
+    config.add_to_hass(hass)
+    flow = EcoFlowOptionsFlow()
+    flow.hass = hass
+    flow.handler = config.entry_id
+    flow._pending_vehicle_energy = submitted
+    # Exercise the options save itself; no device discovery or credentials needed.
+    flow._save_options(mode, [])
+    assert config.data["powerpulse_vehicle_energy"] is expected
+
+
+async def test_history_read_deadline_survives_new_setup(hass):
+    from unittest.mock import MagicMock
+
+    from custom_components.ecoflow_energy.charging_history import history_limits_store
+    from tests.test_charging_history import order, response
+
+    config = entry(hass)
+    session = MagicMock()
+    session.get.return_value = response([order()], 1)
+
+    def client():
+        result = AppApiClient(
+            session,
+            "test@example.com",
+            "test_password",
+            history_store=history_limits_store(hass, config),
+        )
+        result._token = "test_token"
+        return result
+
+    first = ChargingHistoryCoordinator(hass, config, SERIAL, client())
+    with patch(
+        "custom_components.ecoflow_energy.ecoflow.app_api.time.time", return_value=10000
+    ):
+        await first.async_refresh()
+    second = ChargingHistoryCoordinator(hass, config, SERIAL, client())
+    await second.async_restore()
+    with patch(
+        "custom_components.ecoflow_energy.ecoflow.app_api.time.time", return_value=10299
+    ):
+        await second.async_refresh()
+    assert session.get.call_count == 1
+    assert second.data == first.data
+    assert second.update_interval is not None
+    assert second.update_interval.total_seconds() == 1
+    with patch(
+        "custom_components.ecoflow_energy.ecoflow.app_api.time.time", return_value=10300
+    ):
+        await second.async_refresh()
+    assert session.get.call_count == 2
+    assert second.update_interval is not None
+    assert second.update_interval.total_seconds() == 300
+    await first.async_shutdown()
+    await second.async_shutdown()
+
+
+async def test_auth_backoff_survives_new_setup(hass):
+    from custom_components.ecoflow_energy.charging_history import history_limits_store
+
+    config = entry(hass)
+    first_client = AppApiClient(
+        async_get_clientsession(hass),
+        "test@example.com",
+        "test_password",
+        history_store=history_limits_store(hass, config),
+    )
+    first_client.login = AsyncMock(return_value=False)
+    first = ChargingHistoryCoordinator(hass, config, SERIAL, first_client)
+    with patch(
+        "custom_components.ecoflow_energy.ecoflow.app_api.time.time", return_value=10000
+    ):
+        await first.async_refresh()
+    second_client = AppApiClient(
+        async_get_clientsession(hass),
+        "test@example.com",
+        "test_password",
+        history_store=history_limits_store(hass, config),
+    )
+    second_client.login = AsyncMock(return_value=False)
+    second = ChargingHistoryCoordinator(hass, config, SERIAL, second_client)
+    with patch(
+        "custom_components.ecoflow_energy.ecoflow.app_api.time.time", return_value=13599
+    ):
+        await second.async_refresh()
+    second_client.login.assert_not_awaited()
+    assert not second.last_update_success
+    with patch(
+        "custom_components.ecoflow_energy.ecoflow.app_api.time.time", return_value=13600
+    ):
+        await second.async_refresh()
+    second_client.login.assert_awaited_once()
+    await first.async_shutdown()
+    await second.async_shutdown()

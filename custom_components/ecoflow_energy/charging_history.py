@@ -26,7 +26,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .const import CONF_DEVICES, DOMAIN
-from .ecoflow.app_api import AppApiClient
+from .ecoflow.app_api import AppApiClient, HistoryDeferred
 from .ecoflow.charging_history import (
     identity,
     merge_orders,
@@ -79,6 +79,7 @@ class ChargingHistoryCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]
         try:
             async with asyncio.timeout(60):
                 rows = await self.api.get_powerpulse_orders(self.serial)
+            self.update_interval = timedelta(minutes=5)
             orders = merge_orders(self.orders, rows, self.serial)
             totals = {
                 key: {**value, "energy_wh": 0, "sessions": 0}
@@ -89,6 +90,11 @@ class ChargingHistoryCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]
                 await self.store.async_save({"orders": orders, "vehicles": totals})
             self.orders = orders
             return totals
+        except HistoryDeferred as err:
+            self.update_interval = timedelta(seconds=max(1, err.delay))
+            if err.authentication:
+                raise UpdateFailed("Charging history sign-in is backed off") from err
+            return self.data
         except (aiohttp.ClientError, TimeoutError, ValueError, OSError) as err:
             # URLs and bodies can contain serials, account IDs and profile names.
             raise UpdateFailed("Could not update completed charging history") from err
@@ -224,3 +230,11 @@ async def async_remove_history_stores(hass: HomeAssistant, entry: ConfigEntry) -
     for hashed in hashes:
         await Store(hass, 1, f"{DOMAIN}_charging_history_{hashed}").async_remove()
     await index.async_remove()
+    await history_limits_store(hass, entry).async_remove()
+
+
+def history_limits_store(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> Store[dict[str, Any]]:
+    """One entry-wide auth deadline and per-charger read times, across restarts."""
+    return Store(hass, 1, f"{DOMAIN}_charging_history_limits_{entry.entry_id}")
