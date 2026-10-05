@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from custom_components.ecoflow_energy.button import async_setup_entry as button_setup
 from custom_components.ecoflow_energy.number import async_setup_entry as number_setup
 from custom_components.ecoflow_energy.select import async_setup_entry as select_setup
+from custom_components.ecoflow_energy.switch import async_setup_entry as switch_setup
 
 from .conftest import add_entities_collector
 from .test_powerpulse2_controls import (
@@ -35,10 +36,15 @@ async def test_control_creation_by_prefix(
     wallbox.set_device_value("ev_max_current_a", 16.0)
     wallbox.set_device_value("ev_charge_current_a", 6.0)
     wallbox.set_device_value("ev_charge_mode", "solar")
+    wallbox.set_device_value("ev_solar_min_current_a", 6.0)
+    wallbox.set_device_value("ev_custom_current_a", 6.0)
+    wallbox.set_device_value("ev_phase_setting", 0)
+    wallbox.set_device_value("ev_settings_switch_bits", 0)
     for setup, expected in [
         (button_setup, 2),
-        (number_setup, 1),
-        (select_setup, int(sibling)),
+        (number_setup, 3 if sibling else 1),
+        (select_setup, 2 * int(sibling)),
+        (switch_setup, int(sibling)),
     ]:
         entities: list[Any] = []
         await setup(hass, entry, add_entities_collector(entities))
