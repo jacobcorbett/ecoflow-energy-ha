@@ -75,10 +75,15 @@ class ChargingHistoryCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]
                 device_log_tag(self.serial),
             )
             return
+        self._restore_failed = False
+        self.history_available = True
         if saved is None:
             return
         if not valid_saved_ledger(saved):
-            _LOGGER.warning("Invalid stored charging ledger; starting empty")
+            _LOGGER.warning(
+                "Invalid stored charging ledger; starting empty (%s)",
+                device_log_tag(self.serial),
+            )
             return
         self.orders = saved["orders"]
         self.data = saved["vehicles"]
@@ -86,7 +91,11 @@ class ChargingHistoryCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         """An incomplete fetch never publishes or persists partial totals."""
         if self._restore_failed:
-            raise UpdateFailed("Charging ledger could not be loaded; preserving store")
+            await self.async_restore()
+            if self._restore_failed:
+                raise UpdateFailed(
+                    "Charging ledger could not be loaded; preserving store"
+                )
         try:
             async with asyncio.timeout(60):
                 rows = await self.api.get_powerpulse_orders(self.serial)
@@ -238,7 +247,10 @@ async def async_register_history_stores(
         else set()
     )
     hashes.update(identity(serial) for serial in serials)
-    await index.async_save(sorted(hashes))
+    expected = sorted(hashes)
+    await index.async_save(expected)
+    if await index.async_load() != expected:
+        raise OSError("Charging history index write could not be verified")
 
 
 async def async_remove_history_stores(hass: HomeAssistant, entry: ConfigEntry) -> None:

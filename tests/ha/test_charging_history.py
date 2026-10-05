@@ -538,6 +538,11 @@ async def test_profile_rename_keeps_identity_and_creates_no_entity(hass):
         "other_missing",
         "missing_vehicle",
         "vehicle_list",
+        "vehicle_name_missing",
+        "vehicle_name_none",
+        "sessions_bool",
+        "energy_bool",
+        "vehicle_bad_key",
     ],
 )
 async def test_corrupt_saved_order_or_inconsistent_totals_refused(
@@ -566,6 +571,21 @@ async def test_corrupt_saved_order_or_inconsistent_totals_refused(
         saved["vehicles"] = {}
     elif corruption == "vehicle_list":
         orders[identity("a")]["vehicle"] = []
+    elif corruption == "vehicle_name_missing":
+        del saved["vehicles"][identity("profile-a")]["name"]
+    elif corruption == "vehicle_name_none":
+        saved["vehicles"][identity("profile-a")]["name"] = None
+    elif corruption in {"sessions_bool", "energy_bool"}:
+        orders[identity("a")]["energy_wh"] = 1
+        saved["vehicles"] = vehicle_totals(orders)
+        field = "sessions" if corruption == "sessions_bool" else "energy_wh"
+        saved["vehicles"][identity("profile-a")][field] = True
+    elif corruption == "vehicle_bad_key":
+        saved["vehicles"]["bad"] = {
+            **saved["vehicles"][identity("profile-a")],
+            "energy_wh": 0,
+            "sessions": 0,
+        }
     else:
         saved["vehicles"][identity("profile-a")]["energy_wh"] += 1
     coord = ChargingHistoryCoordinator(hass, entry(hass), SERIAL, api(hass))
@@ -574,6 +594,9 @@ async def test_corrupt_saved_order_or_inconsistent_totals_refused(
     assert coord.orders == {}
     assert coord.data == {}
     assert "Invalid stored charging ledger; starting empty" in caplog.text
+    from custom_components.ecoflow_energy.ecoflow.const import device_log_tag
+
+    assert device_log_tag(SERIAL) in caplog.text
     assert "private-invalid-date" not in caplog.text
     await coord.async_shutdown()
 
@@ -606,7 +629,7 @@ async def test_options_disable_and_preserve_history(hass, mode, submitted, expec
     assert config.data["powerpulse_vehicle_energy"] is expected
 
 
-async def test_history_read_deadline_survives_new_setup(hass):
+async def test_history_read_deadline_survives_new_setup(hass, caplog):
     from unittest.mock import MagicMock
 
     from custom_components.ecoflow_energy.charging_history import history_limits_store
@@ -633,12 +656,19 @@ async def test_history_read_deadline_survives_new_setup(hass):
         await first.async_refresh()
     second = ChargingHistoryCoordinator(hass, config, SERIAL, client())
     await second.async_restore()
+    sensor = VehicleEnergySensor(
+        second, identity("profile-a"), DeviceInfo(identifiers={(DOMAIN, SERIAL)})
+    )
+    caplog.clear()
     with patch(
         "custom_components.ecoflow_energy.ecoflow.app_api.time.time", return_value=10299
     ):
         await second.async_refresh()
     assert session.get.call_count == 1
     assert second.data == first.data
+    assert second.history_available
+    assert sensor.available
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
     assert second.update_interval is not None
     assert second.update_interval.total_seconds() == 1
     with patch(
@@ -711,7 +741,7 @@ async def test_developer_auth_never_constructs_history_client_or_registers_store
     hass.data.setdefault(DOMAIN, {})[config.entry_id] = {SERIAL: source}
     with (
         patch(
-            "custom_components.ecoflow_energy.charging_history.AppApiClient"
+            "custom_components.ecoflow_energy.ecoflow.app_api.AppApiClient"
         ) as client,
         patch(
             "custom_components.ecoflow_energy.charging_history.async_register_history_stores"
@@ -785,7 +815,11 @@ async def test_ledger_load_error_preserves_unread_store(hass, caplog):
     client = api(hass)
     client.get_powerpulse_orders = AsyncMock(return_value=[record()])
     with (
-        patch.object(Store, "async_load", side_effect=HomeAssistantError("private")),
+        patch.object(
+            Store,
+            "async_load",
+            side_effect=HomeAssistantError("sentinel-7f3a-load-detail"),
+        ),
         patch.object(Store, "async_save") as save,
     ):
         coord = await async_setup_charging_history(
@@ -802,7 +836,7 @@ async def test_ledger_load_error_preserves_unread_store(hass, caplog):
     client.get_powerpulse_orders.assert_not_awaited()
     assert not coord.last_update_success
     assert "Could not restore charging ledger" in caplog.text
-    assert "private" not in caplog.text
+    assert "sentinel-7f3a-load-detail" not in caplog.text
     await coord.async_shutdown()
 
 
@@ -816,7 +850,11 @@ async def test_index_load_error_does_not_overwrite_and_removal_cleans_known_stor
     limits = history_limits_store(hass, config)
     await limits.async_save({"last_reads": {}, "retry_after": 100})
     with (
-        patch.object(Store, "async_load", side_effect=HomeAssistantError("private")),
+        patch.object(
+            Store,
+            "async_load",
+            side_effect=HomeAssistantError("sentinel-7f3a-load-detail"),
+        ),
         patch.object(Store, "async_save") as save,
     ):
         await async_register_history_stores(hass, config, [SERIAL])
@@ -857,7 +895,7 @@ async def test_same_serial_ledgers_are_isolated_by_entry(hass):
 
 
 @pytest.mark.parametrize(
-    "failure", [ValueError("private"), HistoryDeferred(1e300, True)]
+    "failure", [ValueError("sentinel-7f3a-load-detail"), HistoryDeferred(1e300, True)]
 )
 async def test_read_failures_warn_once_and_recover_without_error_logs(
     hass, caplog, failure
@@ -880,10 +918,56 @@ async def test_read_failures_warn_once_and_recover_without_error_logs(
     assert device_log_tag(SERIAL) in warnings[0].getMessage()
     assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
     assert SERIAL not in caplog.text
-    assert "private" not in caplog.text
+    assert "sentinel-7f3a-load-detail" not in caplog.text
     assert coord.update_interval is not None
     assert coord.update_interval.total_seconds() <= 3600
     coord.api.get_powerpulse_orders.side_effect = None
     await coord.async_refresh()
     assert sensor.available
+    coord.api.get_powerpulse_orders.side_effect = failure
+    await coord.async_refresh()
+    assert not sensor.available
+    assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 2
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
     await coord.async_shutdown()
+
+
+async def test_restore_retries_read_before_fetch_or_save(hass):
+    from custom_components.ecoflow_energy.ecoflow.charging_history import (
+        merge_orders,
+        vehicle_totals,
+    )
+
+    orders = merge_orders({}, [record()], SERIAL)
+    saved = {"orders": orders, "vehicles": vehicle_totals(orders)}
+    coord = ChargingHistoryCoordinator(hass, entry(hass), SERIAL, api(hass))
+    coord._restore_failed = True
+    coord.api.get_powerpulse_orders = AsyncMock(return_value=[])
+    with (
+        patch.object(
+            coord.store,
+            "async_load",
+            side_effect=[HomeAssistantError("sentinel-7f3a-load-detail"), saved],
+        ),
+        patch.object(coord.store, "async_save") as save,
+    ):
+        await coord.async_refresh()
+        assert not coord.last_update_success
+        save.assert_not_called()
+        coord.api.get_powerpulse_orders.assert_not_awaited()
+        await coord.async_refresh()
+        assert coord.last_update_success
+        assert coord.history_available
+        assert not coord._restore_failed
+        assert coord.data[identity("profile-a")]["energy_wh"] == 16004
+        save.assert_not_called()
+    await coord.async_shutdown()
+
+
+async def test_index_silent_write_failure_is_detected(hass):
+    config = entry(hass)
+    with (
+        patch.object(Store, "_async_write_data", side_effect=WriteError("disk full")),
+        pytest.raises(OSError, match="index write could not be verified"),
+    ):
+        await async_register_history_stores(hass, config, [SERIAL])
