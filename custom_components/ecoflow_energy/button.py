@@ -61,12 +61,9 @@ async def async_setup_entry(
     entities: list[EcoFlowButton] = []
 
     for coordinator in coordinators.values():
-        if (
-            coordinator.device_type == DEVICE_TYPE_POWERPULSE2
-            and not supports_powerpulse_controls(coordinator.device_sn)
-        ):
-            continue
         if coordinator.device_type != DEVICE_TYPE_POWERPULSE2:
+            continue
+        if not supports_powerpulse_controls(coordinator.device_sn):
             continue
         if not coordinator.enhanced_mode:
             _LOGGER.debug(

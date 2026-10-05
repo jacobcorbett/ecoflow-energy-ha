@@ -1,4 +1,4 @@
-"""Protobuf telemetry parser for the EcoFlow PowerPulse 2 wallbox (C376, C374).
+"""Protobuf telemetry parser for the EcoFlow PowerPulse 2 wallbox (C376, C374, C371).
 
 Derived from an 11-frame capture of a live PowerPulse 2 charging session
 (PLAN-132, issue #7), spanning an idle plug, a single-phase charge, a
