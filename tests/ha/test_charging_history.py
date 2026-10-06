@@ -480,17 +480,24 @@ async def test_history_selection_uses_device_type_only(hass):
         sn: EcoFlowDeviceCoordinator(hass, config, {"sn": sn, "device_type": kind})
         for sn, kind in [
             ("C376TEST0002", "powerpulse2"),
+            ("C371TEST0003", "powerpulse2"),
             (SERIAL, "unknown"),
             ("R351TEST0001", "delta2max"),
         ]
     }
+    # C371 is registered since #446; explicitly simulate an unknown coordinator
+    # to keep the prefix-versus-device-type guard regression meaningful.
+    sources[SERIAL].device_type = "unknown"
     hass.data.setdefault(DOMAIN, {})[config.entry_id] = sources
     with patch(
         "custom_components.ecoflow_energy.charging_history.async_setup_charging_history",
         new_callable=AsyncMock,
     ) as setup:
         await sensor.async_setup_entry(hass, config, add_entities_collector([]))
-    assert [call.args[2] for call in setup.call_args_list] == ["C376TEST0002"]
+    assert [call.args[2] for call in setup.call_args_list] == [
+        "C376TEST0002",
+        "C371TEST0003",
+    ]
     for source in sources.values():
         await source.async_shutdown()
 

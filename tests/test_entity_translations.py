@@ -210,6 +210,8 @@ def test_charging_current_setpoint_is_named_as_a_setpoint() -> None:
         )["entity"]
         assert entity["sensor"]["ev_charge_current_a"]["name"] == expected
         assert entity["number"]["ev_charge_current_a"]["name"] == expected
+
+
 @pytest.mark.parametrize(
     "source",
     [
